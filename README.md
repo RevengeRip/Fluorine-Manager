@@ -53,3 +53,5 @@ libs/      MO2 sub-libraries
 src/       Main organizer source
 docs/      Notes and tracking
 ```
+
+NOTE: The porting was done with Claude/Codex, if you don't like AI please don't use this application. I'm looking for feedback not hate.
