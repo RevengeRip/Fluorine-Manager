@@ -148,7 +148,28 @@ def find_steam_path() -> Path | None:
             value = winreg.QueryValueEx(key, "SteamExe")
             return Path(value[0].replace("/", "\\")).parent
     except FileNotFoundError:
-        return None
+        pass
+
+    # Linux: check common Steam install locations.
+    for candidate in (
+        Path.home() / ".local" / "share" / "Steam",
+        Path.home() / ".steam" / "steam",
+        Path.home()
+        / ".var"
+        / "app"
+        / "com.valvesoftware.Steam"
+        / ".local"
+        / "share"
+        / "Steam",
+        Path.home() / "snap" / "steam" / "common" / ".local" / "share" / "Steam",
+    ):
+        if (
+            candidate.is_dir()
+            and candidate.joinpath("steamapps", "libraryfolders.vdf").exists()
+        ):
+            return candidate
+
+    return None
 
 
 def find_games() -> dict[str, Path]:

@@ -108,6 +108,10 @@ private:
   //
   void createNew();
 
+  // opens a file dialog to browse to an existing portable instance
+  //
+  void openExistingPortable();
+
   // shows a confirmation to the user before switching
   //
   bool confirmSwitch(const Instance& to);

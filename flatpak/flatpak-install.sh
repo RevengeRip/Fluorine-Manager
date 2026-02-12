@@ -34,7 +34,9 @@ if [ "${MODE}" = "bundle" ]; then
     echo "Building Flatpak bundle (this may take a while)..."
     flatpak-builder --repo="${PROJECT_DIR}/flatpak-repo" --force-clean \
         "${BUILD_DIR}" "${MANIFEST}"
-    flatpak build-bundle "${PROJECT_DIR}/flatpak-repo" "${PROJECT_DIR}/fluorine-manager.flatpak" "${APP_ID}"
+    flatpak build-bundle \
+        --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+        "${PROJECT_DIR}/flatpak-repo" "${PROJECT_DIR}/fluorine-manager.flatpak" "${APP_ID}"
     BUNDLE_SIZE="$(du -sh fluorine-manager.flatpak | cut -f1)"
     echo ""
     echo "=== Bundle created: fluorine-manager.flatpak (${BUNDLE_SIZE}) ==="

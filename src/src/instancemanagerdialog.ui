@@ -41,6 +41,17 @@
        </widget>
       </item>
       <item>
+       <widget class="QPushButton" name="openExisting">
+        <property name="text">
+         <string>Open existing portable</string>
+        </property>
+        <property name="icon">
+         <iconset resource="resources.qrc">
+          <normaloff>:/MO/gui/open_folder</normaloff>:/MO/gui/open_folder</iconset>
+        </property>
+       </widget>
+      </item>
+      <item>
        <spacer name="horizontalSpacer">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>

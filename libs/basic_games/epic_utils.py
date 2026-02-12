@@ -87,6 +87,21 @@ def find_legendary_games(
 
 
 def find_heroic_games(errors: ErrorList | None = None):
+    # Linux: Heroic stores config in ~/.config/heroic/ (or Flatpak equivalent).
+    for candidate in (
+        Path.home() / ".config" / "heroic" / "legendaryConfig",
+        Path.home()
+        / ".var"
+        / "app"
+        / "com.heroicgameslauncher.hgl"
+        / "config"
+        / "heroic"
+        / "legendaryConfig",
+    ):
+        if candidate.is_dir():
+            return find_legendary_games(str(candidate), errors)
+
+    # Windows fallback.
     return find_legendary_games(
         os.path.expandvars(r"%AppData%\heroic\legendaryConfig"), errors
     )

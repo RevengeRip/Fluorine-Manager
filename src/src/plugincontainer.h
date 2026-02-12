@@ -500,6 +500,9 @@ private:
   PreviewGenerator m_PreviewGenerator;
 
   QFile m_PluginsCheck;
+
+  // Resolved plugin path (may be per-instance on Linux global installs)
+  QString m_PluginPath;
 };
 
 #endif  // PLUGINCONTAINER_H

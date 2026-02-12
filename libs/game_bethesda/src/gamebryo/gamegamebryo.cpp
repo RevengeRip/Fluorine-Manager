@@ -1,5 +1,7 @@
 #include "gamegamebryo.h"
 
+#include <uibase/filesystemutilities.h>
+
 #include "bsainvalidation.h"
 #include "dataarchives.h"
 #include "gamebryomoddatacontent.h"
@@ -44,37 +46,8 @@
 #include <string>
 #include <vector>
 
-// Case-insensitive file path resolution for Linux.
-// On Windows (case-insensitive FS), just returns the input path.
-// On Linux, if the exact path doesn't exist, searches the parent directory
-// for a file matching the name case-insensitively.
-static QString resolveFileCaseInsensitive(const QString& filePath)
-{
-#ifdef _WIN32
-  return filePath;
-#else
-  if (QFileInfo::exists(filePath)) {
-    return filePath;
-  }
-
-  QFileInfo info(filePath);
-  QDir dir(info.path());
-  if (!dir.exists()) {
-    return filePath;
-  }
-
-  const QString target = info.fileName();
-  const QStringList entries =
-      dir.entryList(QDir::Files | QDir::Hidden | QDir::System);
-  for (const QString& entry : entries) {
-    if (entry.compare(target, Qt::CaseInsensitive) == 0) {
-      return dir.absoluteFilePath(entry);
-    }
-  }
-
-  return filePath;
-#endif
-}
+// Local resolveFileCaseInsensitive moved to MOBase::resolveFileCaseInsensitive
+using MOBase::resolveFileCaseInsensitive;
 
 GameGamebryo::GameGamebryo() {}
 

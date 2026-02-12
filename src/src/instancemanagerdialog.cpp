@@ -8,6 +8,8 @@
 #include "shared/appconfig.h"
 #include "shared/util.h"
 #include "ui_instancemanagerdialog.h"
+#include <QFileDialog>
+#include <QStandardPaths>
 #include <iplugingame.h>
 #include <report.h>
 #include <utility.h>
@@ -169,6 +171,9 @@ InstanceManagerDialog::InstanceManagerDialog(PluginContainer& pc, QWidget* paren
 
   connect(ui->createNew, &QPushButton::clicked, [&] {
     createNew();
+  });
+  connect(ui->openExisting, &QPushButton::clicked, [&] {
+    openExistingPortable();
   });
 
   connect(ui->list->selectionModel(), &QItemSelectionModel::selectionChanged, [&] {
@@ -365,7 +370,15 @@ void InstanceManagerDialog::openSelectedInstance()
   }
 
   if (to.isPortable()) {
-    InstanceManager::singleton().setCurrentInstance("");
+    // Store the actual directory for portable instances so we can distinguish
+    // between the default portable path and user-selected portable locations.
+    // An empty string means "use default portable path".
+    auto& m = InstanceManager::singleton();
+    if (to.directory() == m.portablePath()) {
+      m.setCurrentInstance("");
+    } else {
+      m.setCurrentInstance(to.directory());
+    }
   } else {
     InstanceManager::singleton().setCurrentInstance(to.displayName());
   }
@@ -733,4 +746,32 @@ void InstanceManagerDialog::setButtonsEnabled(bool b)
   ui->convertToGlobal->setEnabled(b);
   ui->deleteInstance->setEnabled(b);
   ui->switchToInstance->setEnabled(b);
+}
+
+void InstanceManagerDialog::openExistingPortable()
+{
+  const QString dir = QFileDialog::getExistingDirectory(
+      this, tr("Select portable instance folder"),
+      QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
+
+  if (dir.isEmpty()) {
+    return;
+  }
+
+  const QString ini = QDir(dir).filePath("ModOrganizer.ini");
+  if (!QFileInfo::exists(ini)) {
+    QMessageBox::warning(
+        this, tr("Not an instance"),
+        tr("The selected folder does not contain a ModOrganizer.ini file."));
+    return;
+  }
+
+  // Switch directly to this portable instance
+  InstanceManager::singleton().setCurrentInstance(dir);
+
+  if (m_restartOnSelect) {
+    ExitModOrganizer(Exit::Restart);
+  }
+
+  accept();
 }

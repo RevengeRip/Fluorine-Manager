@@ -77,12 +77,13 @@ bool PagesDescending(QGroupBox* LHS, QGroupBox* RHS)
 
 FomodInstallerDialog::FomodInstallerDialog(
     InstallerFomod* installer, const GuessedValue<QString>& modName,
-    const QString& fomodPath,
+    const QString& fomodPath, const QString& fomodDirName,
     const std::function<MOBase::IPluginList::PluginStates(const QString&)>& fileCheck,
     QWidget* parent)
     : QDialog(parent), ui(new Ui::FomodInstallerDialog), m_Installer(installer),
-      m_ModName(modName), m_ModID(-1), m_FomodPath(fomodPath), m_Manual(false),
-      m_FileCheck(fileCheck), m_FileSystemItemSequence()
+      m_ModName(modName), m_ModID(-1), m_FomodPath(fomodPath),
+      m_FomodDirName(fomodDirName), m_Manual(false), m_FileCheck(fileCheck),
+      m_FileSystemItemSequence()
 {
   ui->setupUi(this);
   setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
@@ -235,7 +236,7 @@ void FomodInstallerDialog::readXml(QFile& file,
 
 void FomodInstallerDialog::readInfoXml()
 {
-  QFile file(QDir::tempPath() + "/" + m_FomodPath + "/fomod/info.xml");
+  QFile file(QDir::tempPath() + "/" + m_FomodPath + "/" + m_FomodDirName + "/info.xml");
 
   // We don't need a info.xml file, so we just return if we cannot open it:
   if (!file.open(QIODevice::ReadOnly)) {
@@ -246,7 +247,7 @@ void FomodInstallerDialog::readInfoXml()
 
 void FomodInstallerDialog::readModuleConfigXml()
 {
-  QFile file(QDir::tempPath() + "/" + m_FomodPath + "/fomod/ModuleConfig.xml");
+  QFile file(QDir::tempPath() + "/" + m_FomodPath + "/" + m_FomodDirName + "/ModuleConfig.xml");
   if (!file.open(QIODevice::ReadOnly)) {
     throw Exception(tr("%1 missing.").arg(file.fileName()));
   }
@@ -261,7 +262,7 @@ void FomodInstallerDialog::initData(IOrganizer* moInfo)
   readInfoXml();
 
   QString screenshotPath =
-      QDir::tempPath() + "/" + m_FomodPath + "/fomod/screenshot.png";
+      QDir::tempPath() + "/" + m_FomodPath + "/" + m_FomodDirName + "/screenshot.png";
   if (!QImage(screenshotPath).isNull()) {
     ui->screenshotLabel->setScalableResource(screenshotPath);
     ui->screenshotExpand->setVisible(false);

@@ -30,7 +30,9 @@ along with Mod Organizer.  If not, see <http://www.gnu.org/licenses/>.
 #include "sanitychecks.h"
 #include "settings.h"
 #ifndef _WIN32
+#include "fluorineconfig.h"
 #include "fuseconnector.h"
+#include "wineprefix.h"
 #include <cerrno>
 #endif
 #include <filesystem>
@@ -396,6 +398,30 @@ int MOApplication::setup(MOMultiProcess& multiProcess, bool forceSelect)
     const auto dataDir = m_instance->gamePlugin()->dataDirectory().absolutePath();
     log::info("checking for stale FUSE mount on '{}'", dataDir);
     FuseConnector::tryCleanupStaleMount(dataDir);
+  }
+
+  // Restore any stale INI/save backups left by a previous crash.
+  // This ensures the documents directory is clean before we do anything else.
+  {
+    auto prefixPath = FluorineConfig::prefixPath();
+    if (!prefixPath || prefixPath->isEmpty()) {
+      QSettings instanceSettings(m_settings->filename(), QSettings::IniFormat);
+      for (const auto& key : {"Settings/proton_prefix_path", "Settings/prefix_path",
+                               "Proton/prefix_path", "fluorine/prefix_path"}) {
+        const QString value = instanceSettings.value(key).toString().trimmed();
+        if (!value.isEmpty()) {
+          prefixPath = value;
+          break;
+        }
+      }
+    }
+    if (prefixPath && !prefixPath->isEmpty()) {
+      WinePrefix prefix(*prefixPath);
+      if (prefix.isValid()) {
+        log::info("checking for stale backup files in prefix '{}'", *prefixPath);
+        prefix.restoreStaleBackups();
+      }
+    }
   }
 #endif
 

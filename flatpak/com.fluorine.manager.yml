@@ -314,6 +314,12 @@ modules:
         done
         rm -f /app/lib/fluorine/plugins/FNIS*.py
 
+      # Source-tree Python plugins (rootbuilder, omod installer, etc.).
+      - |
+        for f in src/plugins/*.py; do
+          [ -f "${f}" ] && cp -f "${f}" /app/lib/fluorine/plugins/
+        done
+
       # 7z runtime.
       - |
         if [ -f _build/src/src/dlls/7z.so ]; then

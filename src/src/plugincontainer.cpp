@@ -21,6 +21,43 @@ using namespace MOShared;
 
 namespace bf = boost::fusion;
 
+#ifndef _WIN32
+// Ensure the instance plugin directory contains symlinks to all bundled plugins.
+// Real user files (not matching any bundled plugin name) are left untouched.
+// Stale copies of bundled plugins are replaced with symlinks so that RPATH
+// resolution works correctly (critical for Flatpak where libs live in /app/).
+static void ensureBundledPluginsLinked(const QString& bundledDir,
+                                       const QString& instanceDir)
+{
+  QDir().mkpath(instanceDir);
+  QDirIterator it(bundledDir, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+  while (it.hasNext()) {
+    it.next();
+    const QString target = QDir(instanceDir).filePath(it.fileName());
+    const QFileInfo targetInfo(target);
+
+    if (targetInfo.isSymLink()) {
+      // Already a symlink — check if it points to the right place.
+      if (targetInfo.symLinkTarget() == QFileInfo(it.filePath()).absoluteFilePath()) {
+        continue;  // correct symlink, nothing to do
+      }
+      // Stale symlink pointing elsewhere — replace it.
+      QFile::remove(target);
+    } else if (targetInfo.exists()) {
+      // Real file/dir with the same name as a bundled plugin — this is a
+      // stale copy (not a user plugin). Replace with a symlink so RPATH works.
+      if (targetInfo.isDir()) {
+        QDir(target).removeRecursively();
+      } else {
+        QFile::remove(target);
+      }
+    }
+
+    QFile::link(it.filePath(), target);
+  }
+}
+#endif
+
 // Welcome to the wonderful world of MO2 plugin management!
 //
 // We'll start by the C++ side.
@@ -401,9 +438,10 @@ QStringList PluginContainer::pluginFileNames() const
   }
   std::vector<IPluginProxy*> proxyList = bf::at_key<IPluginProxy>(m_Plugins);
   for (IPluginProxy* proxy : proxyList) {
-    QStringList proxiedPlugins =
-        proxy->pluginList(AppConfig::basePath() + "/" +
-                          ToQString(AppConfig::pluginPath()));
+    QStringList proxiedPlugins = proxy->pluginList(
+        m_PluginPath.isEmpty()
+            ? (AppConfig::basePath() + "/" + ToQString(AppConfig::pluginPath()))
+            : m_PluginPath);
     result.append(proxiedPlugins);
   }
   return result;
@@ -604,9 +642,10 @@ IPlugin* PluginContainer::registerPlugin(QObject* plugin, const QString& filepat
       bf::at_key<IPluginProxy>(m_Plugins).push_back(proxy);
       emit pluginRegistered(proxy);
 
-      QStringList filepaths =
-          proxy->pluginList(QCoreApplication::applicationDirPath() + "/" +
-                            ToQString(AppConfig::pluginPath()));
+      QStringList filepaths = proxy->pluginList(
+          m_PluginPath.isEmpty()
+              ? (AppConfig::basePath() + "/" + ToQString(AppConfig::pluginPath()))
+              : m_PluginPath);
       for (const QString& filepath : filepaths) {
         loadProxied(filepath, proxy);
       }
@@ -921,8 +960,10 @@ void PluginContainer::loadPlugin(QString const& filepath)
   } else {
     // We need to check if this can be handled by a proxy.
     for (auto* proxy : this->plugins<IPluginProxy>()) {
-      auto filepaths = proxy->pluginList(QCoreApplication::applicationDirPath() + "/" +
-                                         ToQString(AppConfig::pluginPath()));
+      auto filepaths = proxy->pluginList(
+          m_PluginPath.isEmpty()
+              ? (AppConfig::basePath() + "/" + ToQString(AppConfig::pluginPath()))
+              : m_PluginPath);
       if (filepaths.contains(filepath)) {
         plugins = loadProxied(filepath, proxy);
         break;
@@ -1139,6 +1180,23 @@ void PluginContainer::loadPlugins()
 
   QString pluginPath =
       AppConfig::basePath() + "/" + ToQString(AppConfig::pluginPath());
+
+#ifndef _WIN32
+  // Per-instance plugin directory: symlink bundled plugins, then load from there.
+  // This allows each instance to have its own set of plugins (bundled + custom).
+  if (m_Organizer) {
+    QString instancePluginPath =
+        QDir(QDir::fromNativeSeparators(m_Organizer->basePath())).filePath("plugins");
+    if (QDir::cleanPath(instancePluginPath) != QDir::cleanPath(pluginPath)) {
+      ensureBundledPluginsLinked(pluginPath, instancePluginPath);
+      pluginPath = instancePluginPath;
+      log::debug("Using per-instance plugin directory: {}",
+                 QDir::toNativeSeparators(pluginPath));
+    }
+  }
+#endif
+
+  m_PluginPath = pluginPath;
   log::debug("looking for plugins in {}", QDir::toNativeSeparators(pluginPath));
 
   // Linux is case-sensitive; keep only the canonical Fallout NV plugin filename.

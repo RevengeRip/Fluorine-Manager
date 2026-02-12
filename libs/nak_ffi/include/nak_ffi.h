@@ -194,6 +194,18 @@ char *nak_apply_wine_registry_settings(
     uint32_t app_id
 );
 
+/** Apply a game's registry entry with a custom install path.
+ *  Looks up game_name in KNOWN_GAMES and writes registry pointing to install_path.
+ *  Returns NULL on success, or an error message (free with nak_string_free). */
+char *nak_apply_registry_for_game_path(
+    const char *prefix_path,
+    const char *proton_name,
+    const char *proton_path,
+    const char *game_name,
+    const char *install_path,
+    NakLogCallback log_cb
+);
+
 /* ========================================================================
  * Tier 7: Prefix Symlinks
  * ======================================================================== */

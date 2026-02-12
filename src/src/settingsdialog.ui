@@ -1741,17 +1741,17 @@ If you disable this feature, MO will only display official DLCs this way. Please
           <item row="1" column="0">
            <widget class="QLabel" name="label_63">
             <property name="text">
-             <string>Prefix Path:</string>
+             <string>Prefix Location:</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="1" colspan="3">
-           <widget class="QLabel" name="prefixPathValueLabel">
+          <item row="1" column="1" colspan="2">
+           <widget class="QLineEdit" name="prefixLocationEdit"/>
+          </item>
+          <item row="1" column="3">
+           <widget class="QPushButton" name="prefixLocationBrowseButton">
             <property name="text">
-             <string>(none)</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
+             <string>Browse...</string>
             </property>
            </widget>
           </item>
@@ -1790,6 +1790,16 @@ If you disable this feature, MO will only display official DLCs this way. Please
             </property>
             <property name="toolTip">
              <string>Re-apply Wine registry settings for the current prefix. Use this if games fail to detect their installation or have registry-related issues.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2" colspan="2">
+           <widget class="QPushButton" name="winetricksButton">
+            <property name="text">
+             <string>Winetricks</string>
+            </property>
+            <property name="toolTip">
+             <string>Open the Winetricks GUI to install Windows libraries and components into the prefix.</string>
             </property>
            </widget>
           </item>

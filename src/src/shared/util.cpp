@@ -322,10 +322,7 @@ Version createVersionInfo()
 #else
 Version createVersionInfo()
 {
-  // On Linux, return a development version stub
-  std::vector<std::variant<int, Version::ReleaseType>> prereleases;
-  prereleases.push_back(Version::Development);
-  return Version(2, 5, 0, 0, std::move(prereleases));
+  return Version(2, 5, 2, 0);
 }
 #endif
 

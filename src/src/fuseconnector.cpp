@@ -144,22 +144,31 @@ bool isMountPoint(const QString& path)
 
 bool runUnmountCommand(const QString& program, const QStringList& args)
 {
-  QProcess p;
+  // Suppress stderr from fusermount/umount to avoid confusing terminal output
+  // when unmount fails (e.g. permission denied in Flatpak sandbox).
+  auto tryRun = [&](const QString& cmd, const QStringList& cmdArgs) -> bool {
+    QProcess p;
+    p.setStandardErrorFile(QProcess::nullDevice());
+    p.start(cmd, cmdArgs);
+    if (!p.waitForFinished(3000)) {
+      p.kill();
+      return false;
+    }
+    return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+  };
 
+  // In Flatpak: try sandbox-local unmount first (mount was likely created
+  // inside the sandbox), then fall back to host-side unmount.
   if (isFlatpak()) {
+    if (tryRun(program, args)) {
+      return true;
+    }
     QStringList spawnArgs = {QStringLiteral("--host"), program};
     spawnArgs.append(args);
-    p.start(QStringLiteral("flatpak-spawn"), spawnArgs);
-  } else {
-    p.start(program, args);
+    return tryRun(QStringLiteral("flatpak-spawn"), spawnArgs);
   }
 
-  if (!p.waitForFinished(3000)) {
-    p.kill();
-    return false;
-  }
-
-  return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+  return tryRun(program, args);
 }
 
 std::vector<std::pair<std::string, std::string>>

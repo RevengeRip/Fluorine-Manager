@@ -31,6 +31,18 @@ QDLLEXPORT QString sanitizeFileName(const QString& name,
  **/
 QDLLEXPORT bool validFileName(const QString& name);
 
+/**
+ * @brief Resolve a file path case-insensitively on Linux.
+ *
+ * On Windows (case-insensitive FS), returns the input path as-is.
+ * On Linux, if the exact path doesn't exist, searches the parent directory
+ * for a file matching the name case-insensitively.
+ *
+ * @param path the absolute file path to resolve
+ * @return the resolved path (with correct case) or the original path if not found
+ */
+QDLLEXPORT QString resolveFileCaseInsensitive(const QString& path);
+
 }  // namespace MOBase
 
 #endif  // FILESYSTEM_H

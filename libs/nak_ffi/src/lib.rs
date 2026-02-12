@@ -659,6 +659,58 @@ pub unsafe extern "C" fn nak_apply_wine_registry_settings(
     }
 }
 
+/// Apply a game's registry entry with a custom install path.
+///
+/// Looks up the game by name in KNOWN_GAMES, writes the registry entry
+/// pointing to `install_path`. Returns null on success, or an error message.
+#[no_mangle]
+pub unsafe extern "C" fn nak_apply_registry_for_game_path(
+    prefix_path: *const c_char,
+    proton_name: *const c_char,
+    proton_path: *const c_char,
+    game_name: *const c_char,
+    install_path: *const c_char,
+    log_cb: NakLogCallback,
+) -> *mut c_char {
+    let prefix = unsafe { from_cstr(prefix_path) };
+    let _proton_name = unsafe { from_cstr(proton_name) };
+    let proton_path_str = unsafe { from_cstr(proton_path) };
+    let game = unsafe { from_cstr(game_name) };
+    let install = unsafe { from_cstr(install_path) };
+
+    let protons = nak_rust::steam::find_steam_protons();
+    let proton = match protons
+        .iter()
+        .find(|p| p.path.to_string_lossy() == proton_path_str)
+    {
+        Some(p) => p.clone(),
+        None => {
+            return to_cstring(&format!(
+                "Proton not found at path: {}",
+                proton_path_str
+            ));
+        }
+    };
+
+    let log_fn = move |msg: String| {
+        if let Some(cb) = log_cb {
+            let c = CString::new(msg).unwrap_or_default();
+            unsafe { cb(c.as_ptr()) };
+        }
+    };
+
+    match nak_rust::installers::apply_registry_for_game_path(
+        Path::new(prefix),
+        &proton,
+        game,
+        Path::new(install),
+        &log_fn,
+    ) {
+        Ok(()) => ptr::null_mut(),
+        Err(e) => to_cstring(&e),
+    }
+}
+
 // ============================================================================
 // Tier 7: Prefix Symlinks
 // ============================================================================

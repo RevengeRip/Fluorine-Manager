@@ -194,14 +194,9 @@ TypePage::TypePage(CreateInstanceDialog& dlg)
   tuneTypeButtonHeight(ui->createGlobal);
   tuneTypeButtonHeight(ui->createPortable);
 
-  // disable portable button if it already exists
-  if (InstanceManager::singleton().portableInstanceExists()) {
-    ui->createPortable->setEnabled(false);
-    ui->portableExistsLabel->setVisible(true);
-  } else {
-    ui->createPortable->setEnabled(true);
-    ui->portableExistsLabel->setVisible(false);
-  }
+  // Portable instances can now be created at any location, so always enable
+  ui->createPortable->setEnabled(true);
+  ui->portableExistsLabel->setVisible(false);
 
   QObject::connect(ui->createGlobal, &QAbstractButton::clicked, [&] {
     global();

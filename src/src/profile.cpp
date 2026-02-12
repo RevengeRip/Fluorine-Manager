@@ -19,7 +19,7 @@ along with Mod Organizer.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "profile.h"
 
-#include "filesystemutilities.h"
+#include <uibase/filesystemutilities.h>
 #include "game_features.h"
 #include "modinfo.h"
 #include "modinfoforeign.h"
@@ -64,36 +64,7 @@ along with Mod Organizer.  If not, see <http://www.gnu.org/licenses/>.
 using namespace MOBase;
 using namespace MOShared;
 
-namespace
-{
-QString resolveExistingFileCaseInsensitive(const QString& path)
-{
-#ifdef _WIN32
-  return QDir::cleanPath(path);
-#else
-  const QFileInfo info(path);
-  if (info.exists()) {
-    return info.absoluteFilePath();
-  }
-
-  QDir dir(info.path());
-  if (!dir.exists()) {
-    return QDir::cleanPath(path);
-  }
-
-  const QString target = info.fileName();
-  const QStringList entries =
-      dir.entryList(QDir::Files | QDir::Readable | QDir::Hidden | QDir::System);
-  for (const QString& entry : entries) {
-    if (entry.compare(target, Qt::CaseInsensitive) == 0) {
-      return dir.absoluteFilePath(entry);
-    }
-  }
-
-  return QDir::cleanPath(path);
-#endif
-}
-}  // namespace
+// MOBase::resolveFileCaseInsensitive moved to MOBase::resolveFileCaseInsensitive
 
 void Profile::touchFile(QString fileName)
 {
@@ -1053,11 +1024,11 @@ QString Profile::absoluteIniFilePath(QString iniFile) const
   // Local-settings are not enabled, or the iniFile is not in the list of INI
   // files for the current game.
   if (!localSettingsEnabled() || !isGameIni) {
-    return resolveExistingFileCaseInsensitive(targetIniFile.absoluteFilePath());
+    return MOBase::resolveFileCaseInsensitive(targetIniFile.absoluteFilePath());
   }
 
   // If we reach here, the file is in the profile:
-  return resolveExistingFileCaseInsensitive(
+  return MOBase::resolveFileCaseInsensitive(
       m_Directory.absoluteFilePath(targetIniFile.fileName()));
 }
 

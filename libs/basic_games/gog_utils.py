@@ -1,12 +1,50 @@
 # Code adapted from EzioTheDeadPoet / erri120:
 #     https://github.com/ModOrganizer2/modorganizer-basic_games/pull/5
 
+from __future__ import annotations
+
+import json
+import sys
 import winreg
 from pathlib import Path
 
 
+def _find_heroic_gog_games() -> dict[str, Path]:
+    """Detect GOG games installed via Heroic Launcher on Linux."""
+    games: dict[str, Path] = {}
+
+    for candidate in (
+        Path.home() / ".config" / "heroic" / "gog_store" / "installed.json",
+        Path.home()
+        / ".var"
+        / "app"
+        / "com.heroicgameslauncher.hgl"
+        / "config"
+        / "heroic"
+        / "gog_store"
+        / "installed.json",
+    ):
+        if not candidate.is_file():
+            continue
+        try:
+            with open(candidate, encoding="utf-8") as f:
+                data = json.load(f)
+            for game in data.get("installed", []):
+                app_name = game.get("appName", "")
+                install_path = game.get("install_path") or game.get("installPath", "")
+                if app_name and install_path:
+                    games[str(app_name)] = Path(install_path)
+        except (json.JSONDecodeError, OSError) as e:
+            print(
+                f'Unable to parse Heroic GOG installed games from "{candidate}": {e}',
+                file=sys.stderr,
+            )
+
+    return games
+
+
 def find_games() -> dict[str, Path]:
-    # List the game IDs from the registry:
+    # List the game IDs from the registry (Windows):
     game_ids: list[str] = []
     try:
         with winreg.OpenKey(
@@ -18,7 +56,8 @@ def find_games() -> dict[str, Path]:
                 if game_key.isdigit():
                     game_ids.append(game_key)
     except FileNotFoundError:
-        return {}
+        # Windows registry not available; try Heroic GOG on Linux.
+        return _find_heroic_gog_games()
 
     # For each game, query the path:
     games: dict[str, Path] = {}

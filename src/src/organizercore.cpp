@@ -36,6 +36,7 @@
 #include <uibase/game_features/scriptextender.h>
 #include <uibase/report.h>
 #include <uibase/scopeguard.h>
+#include <uibase/filesystemutilities.h>
 #include <uibase/utility.h>
 #ifdef _WIN32
 #include <usvfs/usvfs.h>
@@ -2162,9 +2163,9 @@ bool OrganizerCore::beforeRun(
           for (const QString& iniFile : managedGame()->iniFiles()) {
             const QString sourceIni =
                 m_CurrentProfile->absoluteIniFilePath(iniFile);
-            const QString targetIni = QFileInfo(managedGame()->documentsDirectory(),
-                                                iniFile)
-                                          .absoluteFilePath();
+            const QString targetIni = MOBase::resolveFileCaseInsensitive(
+                QFileInfo(managedGame()->documentsDirectory(), iniFile)
+                    .absoluteFilePath());
             log::debug("INI deploy check: source='{}' exists={}, target='{}'",
                        sourceIni, QFileInfo::exists(sourceIni), targetIni);
             if (QFileInfo::exists(sourceIni) &&
@@ -2253,9 +2254,9 @@ void OrganizerCore::afterRun(const QFileInfo& binary, DWORD exitCode)
           for (const QString& iniFile : managedGame()->iniFiles()) {
             const QString profileIni =
                 m_CurrentProfile->absoluteIniFilePath(iniFile);
-            const QString targetIni = QFileInfo(managedGame()->documentsDirectory(),
-                                                iniFile)
-                                          .absoluteFilePath();
+            const QString targetIni = MOBase::resolveFileCaseInsensitive(
+                QFileInfo(managedGame()->documentsDirectory(), iniFile)
+                    .absoluteFilePath());
             iniMappings.append({profileIni, targetIni});
             log::debug("Sync profile INI '{}' <- '{}'", profileIni, targetIni);
           }

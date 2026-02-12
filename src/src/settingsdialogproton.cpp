@@ -6,14 +6,25 @@
 #include <QtConcurrent/QtConcurrentRun>
 #include <nak_ffi.h>
 #include <atomic>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
+#include <QFileDialog>
 #include <QFileInfo>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QMetaObject>
 #include <QProcess>
 #include <QSettings>
 #include <QScopeGuard>
+#include <QStandardPaths>
+#include <QVBoxLayout>
 
 namespace
 {
@@ -69,6 +80,10 @@ ProtonSettingsTab::ProtonSettingsTab(Settings& s, SettingsDialog& d)
                    &ProtonSettingsTab::onOpenPrefixFolder);
   QObject::connect(ui->fixGameRegistriesButton, &QPushButton::clicked, this,
                    &ProtonSettingsTab::onFixGameRegistries);
+  QObject::connect(ui->winetricksButton, &QPushButton::clicked, this,
+                   &ProtonSettingsTab::onWinetricks);
+  QObject::connect(ui->prefixLocationBrowseButton, &QPushButton::clicked, this,
+                   &ProtonSettingsTab::onBrowsePrefixLocation);
 
   QObject::connect(&m_installWatcher, &QFutureWatcher<InstallResult>::finished, this,
                    &ProtonSettingsTab::onInstallFinished);
@@ -127,13 +142,24 @@ void ProtonSettingsTab::refreshState()
     ui->protonProgressBar->setVisible(false);
   }
 
-  ui->prefixPathValueLabel->setText(active ? *prefix : tr("(none)"));
+  if (active) {
+    ui->prefixLocationEdit->setText(*prefix);
+    ui->prefixLocationEdit->setReadOnly(true);
+  } else {
+    ui->prefixLocationEdit->setReadOnly(false);
+    if (ui->prefixLocationEdit->text().isEmpty()) {
+      ui->prefixLocationEdit->setText(
+          QDir::homePath() + "/.var/app/com.fluorine.manager/Prefix");
+    }
+  }
 
+  ui->prefixLocationBrowseButton->setEnabled(!m_busy && !active);
   ui->createPrefixButton->setEnabled(!m_busy && !active);
   ui->deletePrefixButton->setEnabled(!m_busy && active);
   ui->recreatePrefixButton->setEnabled(!m_busy && active);
   ui->openPrefixFolderButton->setEnabled(!m_busy && active);
   ui->fixGameRegistriesButton->setEnabled(!m_busy && active);
+  ui->winetricksButton->setEnabled(!m_busy && active);
   ui->protonVersionCombo->setEnabled(!m_busy);
 }
 
@@ -164,28 +190,22 @@ void ProtonSettingsTab::onCreatePrefix()
     return;
   }
 
-  setBusy(true);
-  ui->protonStatusLabel->setText(tr("Creating Steam shortcut..."));
-
-  const QByteArray protonNameUtf8 = protonName.toUtf8();
-  NakShortcutResult result         = nak_add_mod_manager_shortcut(
-      "Fluorine Manager", "/usr/bin/true", "/tmp", protonNameUtf8.constData());
-
-  const QString prefixPath =
-      QString::fromUtf8(result.prefix_path ? result.prefix_path : "");
-  const QString error = QString::fromUtf8(result.error ? result.error : "");
-  const uint32_t appId = result.app_id;
-
-  nak_shortcut_result_free(result);
-
-  if (!error.isEmpty() || prefixPath.isEmpty()) {
-    setBusy(false);
-    ui->protonStatusLabel->setText(error.isEmpty() ? tr("Failed to create prefix")
-                                                    : tr("Error: %1").arg(error));
+  const QString basePath = ui->prefixLocationEdit->text().trimmed();
+  if (basePath.isEmpty()) {
+    ui->protonStatusLabel->setText(tr("Select a prefix location first"));
     return;
   }
 
-  startInstallTask(appId, prefixPath, protonName, protonPath,
+  const QString pfxPath = QDir(basePath).filePath("pfx");
+  if (!QDir().mkpath(pfxPath)) {
+    ui->protonStatusLabel->setText(tr("Failed to create prefix directory"));
+    return;
+  }
+
+  setBusy(true);
+  ui->protonStatusLabel->setText(tr("Creating prefix..."));
+
+  startInstallTask(0, pfxPath, protonName, protonPath,
                    ui->umuCheckBox->isChecked(),
                    ui->umuSystemCheckBox->isChecked(),
                    ui->steamRunCheckBox->isChecked());
@@ -203,12 +223,9 @@ void ProtonSettingsTab::onDeletePrefix()
     return;
   }
 
-  if (char* error = nak_remove_steam_shortcut(cfg->app_id); error != nullptr) {
-    nak_string_free(error);
-  }
-
   cfg->destroyPrefix();
 
+  ui->prefixLocationEdit->clear();
   ui->protonStatusLabel->setText(tr("No Prefix"));
   refreshState();
 }
@@ -253,12 +270,81 @@ void ProtonSettingsTab::onOpenPrefixFolder()
   QProcess::startDetached("xdg-open", {*path});
 }
 
-void ProtonSettingsTab::onFixGameRegistries()
+void ProtonSettingsTab::onBrowsePrefixLocation()
 {
-  if (m_busy) {
-    return;
+  const QString dir = QFileDialog::getExistingDirectory(
+      parentWidget(), tr("Select Prefix Location"), ui->prefixLocationEdit->text());
+  if (!dir.isEmpty()) {
+    ui->prefixLocationEdit->setText(dir);
+  }
+}
+
+QString ProtonSettingsTab::ensureWinetricks()
+{
+  const QString nakWinetricks = QDir::homePath() + "/.config/nak/bin/winetricks";
+  if (QFileInfo::exists(nakWinetricks)) {
+    return nakWinetricks;
   }
 
+  const QString systemWinetricks = QStandardPaths::findExecutable("winetricks");
+  if (!systemWinetricks.isEmpty()) {
+    return systemWinetricks;
+  }
+
+  const QString nakBinDir = QDir::homePath() + "/.config/nak/bin";
+  QDir().mkpath(nakBinDir);
+
+  QString downloadTool;
+  QStringList downloadArgs;
+
+  if (!QStandardPaths::findExecutable("curl").isEmpty()) {
+    downloadTool = "curl";
+    downloadArgs = {"-L", "-o", nakWinetricks,
+                    "https://raw.githubusercontent.com/Winetricks/winetricks/master/src/"
+                    "winetricks"};
+  } else if (!QStandardPaths::findExecutable("wget").isEmpty()) {
+    downloadTool = "wget";
+    downloadArgs = {"-O", nakWinetricks,
+                    "https://raw.githubusercontent.com/Winetricks/winetricks/master/src/"
+                    "winetricks"};
+  } else {
+    return {};
+  }
+
+  QProcess proc;
+  proc.start(downloadTool, downloadArgs);
+  proc.waitForFinished(30000);
+
+  if (proc.exitCode() != 0 || !QFileInfo::exists(nakWinetricks)) {
+    return {};
+  }
+
+  QFile::setPermissions(nakWinetricks,
+                        QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                            QFileDevice::ExeOwner | QFileDevice::ReadGroup |
+                            QFileDevice::ExeGroup | QFileDevice::ReadOther |
+                            QFileDevice::ExeOther);
+
+  return nakWinetricks;
+}
+
+QString ProtonSettingsTab::findProtonWine(const QString& protonPath)
+{
+  QString wine = QDir(protonPath).filePath("files/bin/wine");
+  if (QFileInfo::exists(wine)) {
+    return wine;
+  }
+
+  wine = QDir(protonPath).filePath("dist/bin/wine");
+  if (QFileInfo::exists(wine)) {
+    return wine;
+  }
+
+  return {};
+}
+
+void ProtonSettingsTab::onWinetricks()
+{
   auto cfg = FluorineConfig::load();
   if (!cfg.has_value() || !cfg->prefixExists()) {
     ui->protonStatusLabel->setText(tr("No existing prefix"));
@@ -266,40 +352,213 @@ void ProtonSettingsTab::onFixGameRegistries()
     return;
   }
 
+  const QString winetricksPath = ensureWinetricks();
+  if (winetricksPath.isEmpty()) {
+    QMessageBox::warning(
+        parentWidget(), tr("Winetricks Not Found"),
+        tr("Could not find or download winetricks.\n\n"
+           "Please install winetricks manually:\n"
+           "  Arch: pacman -S winetricks\n"
+           "  Ubuntu: apt install winetricks\n"
+           "  Fedora: dnf install winetricks"));
+    return;
+  }
+
+  // Build env vars for winetricks
+  QStringList envFlags;
+  envFlags << QStringLiteral("WINEPREFIX=%1").arg(cfg->prefix_path);
+
+  const QString protonWine = findProtonWine(cfg->proton_path);
+  if (!protonWine.isEmpty()) {
+    envFlags << QStringLiteral("WINE=%1").arg(protonWine);
+    const QString wineserver =
+        QFileInfo(protonWine).dir().filePath("wineserver");
+    if (QFileInfo::exists(wineserver)) {
+      envFlags << QStringLiteral("WINESERVER=%1").arg(wineserver);
+    }
+  }
+
+  // In Flatpak, wine/winetricks must run on the host via flatpak-spawn --host
+  // because Proton binaries need the host's linker and Steam Runtime libs.
+  const bool flatpak = QFileInfo::exists(QStringLiteral("/.flatpak-info"));
+
+  QString program;
+  QStringList arguments;
+
+  if (flatpak) {
+    program = QStringLiteral("flatpak-spawn");
+    arguments << QStringLiteral("--host");
+    for (const QString& flag : envFlags) {
+      arguments << QStringLiteral("--env=%1").arg(flag);
+    }
+    arguments << winetricksPath << QStringLiteral("--gui");
+  } else {
+    program = winetricksPath;
+    arguments << QStringLiteral("--gui");
+
+    // For non-Flatpak, set env vars directly on the process
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    for (const QString& flag : envFlags) {
+      const int eq = flag.indexOf('=');
+      if (eq > 0) {
+        env.insert(flag.left(eq), flag.mid(eq + 1));
+      }
+    }
+    QProcess proc;
+    proc.setProcessEnvironment(env);
+    proc.setProgram(program);
+    proc.setArguments(arguments);
+    proc.startDetached();
+    return;
+  }
+
+  QProcess::startDetached(program, arguments);
+}
+
+void ProtonSettingsTab::onFixGameRegistries()
+{
+  if (m_busy) {
+    return;
+  }
+
+  showGameRegistryDialog();
+}
+
+void ProtonSettingsTab::showGameRegistryDialog()
+{
+  auto cfg = FluorineConfig::load();
+  if (!cfg.has_value() || !cfg->prefixExists()) {
+    ui->protonStatusLabel->setText(tr("No existing prefix"));
+    refreshState();
+    return;
+  }
+
+  QDialog dialog(parentWidget());
+  dialog.setWindowTitle(tr("Fix Game Registries"));
+  dialog.setMinimumWidth(500);
+
+  auto* layout = new QVBoxLayout(&dialog);
+
+  layout->addWidget(new QLabel(tr("Select the game to apply registry settings for:"),
+                               &dialog));
+
+  auto* gameCombo = new QComboBox(&dialog);
+
+  size_t knownCount  = 0;
+  const NakKnownGame* knownGames = nak_get_known_games(&knownCount);
+
+  for (size_t i = 0; i < knownCount; ++i) {
+    const QString name =
+        QString::fromUtf8(knownGames[i].name ? knownGames[i].name : "");
+    if (!name.isEmpty()) {
+      gameCombo->addItem(name);
+    }
+  }
+
+  layout->addWidget(gameCombo);
+
+  // Game installation path
+  layout->addWidget(new QLabel(tr("Game installation path:"), &dialog));
+
+  auto* pathLayout = new QHBoxLayout();
+  auto* pathEdit   = new QLineEdit(&dialog);
+  pathEdit->setPlaceholderText(tr("e.g. /home/user/.local/share/Steam/steamapps/common/Skyrim Special Edition"));
+  auto* browseBtn = new QPushButton(tr("Browse..."), &dialog);
+  pathLayout->addWidget(pathEdit);
+  pathLayout->addWidget(browseBtn);
+  layout->addLayout(pathLayout);
+
+  QObject::connect(browseBtn, &QPushButton::clicked, &dialog, [&dialog, pathEdit]() {
+    const QString dir = QFileDialog::getExistingDirectory(
+        &dialog, QObject::tr("Select Game Installation Folder"),
+        pathEdit->text().isEmpty() ? QDir::homePath() : pathEdit->text());
+    if (!dir.isEmpty()) {
+      pathEdit->setText(dir);
+    }
+  });
+
+  // Try to auto-detect path when game selection changes
+  auto autoDetect = [pathEdit, gameCombo]() {
+    const QString gameName = gameCombo->currentText();
+    if (gameName.isEmpty()) return;
+
+    // Use nak_detect_all_games to find the install path
+    NakGameList gameList = nak_detect_all_games();
+    for (size_t i = 0; i < gameList.count; ++i) {
+      const QString detected =
+          QString::fromUtf8(gameList.games[i].name ? gameList.games[i].name : "");
+      if (detected.contains(gameName, Qt::CaseInsensitive) ||
+          gameName.contains(detected, Qt::CaseInsensitive)) {
+        const QString path = QString::fromUtf8(
+            gameList.games[i].install_path ? gameList.games[i].install_path : "");
+        if (!path.isEmpty()) {
+          pathEdit->setText(path);
+          break;
+        }
+      }
+    }
+    nak_game_list_free(gameList);
+  };
+
+  QObject::connect(gameCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                   &dialog, autoDetect);
+  // Auto-detect for initially selected game
+  autoDetect();
+
+  auto* buttons =
+      new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  layout->addWidget(buttons);
+
+  QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+
+  const QString selectedGame  = gameCombo->currentText();
+  const QString gamePath      = pathEdit->text();
+  const QString prefixPath    = cfg->prefix_path;
+  const QString protonName    = cfg->proton_name;
+  const QString protonPath    = cfg->proton_path;
+
+  if (gamePath.isEmpty()) {
+    QMessageBox::warning(parentWidget(), tr("No Path"),
+                         tr("Please provide the game installation path."));
+    return;
+  }
+
   setBusy(true);
   ui->protonStatusLabel->setText(tr("Fixing game registries..."));
 
-  const QString prefixPath = cfg->prefix_path;
-  const QString protonName = cfg->proton_name;
-  const QString protonPath = cfg->proton_path;
-  const uint32_t appId     = cfg->app_id;
-
   g_activeInstallTab.store(this);
 
-  m_pendingAppId      = appId;
   m_pendingPrefixPath = prefixPath;
   m_pendingProtonName = protonName;
   m_pendingProtonPath = protonPath;
 
-  m_installWatcher.setFuture(QtConcurrent::run([prefixPath, protonName,
-                                                 protonPath,
-                                                 appId]() -> InstallResult {
-    const QByteArray prefixPathUtf8 = prefixPath.toUtf8();
-    const QByteArray protonNameUtf8 = protonName.toUtf8();
-    const QByteArray protonPathUtf8 = protonPath.toUtf8();
+  m_installWatcher.setFuture(
+      QtConcurrent::run([prefixPath, protonName, protonPath,
+                         selectedGame, gamePath]() -> InstallResult {
+        const QByteArray prefixUtf8    = prefixPath.toUtf8();
+        const QByteArray protonNmUtf8  = protonName.toUtf8();
+        const QByteArray protonPthUtf8 = protonPath.toUtf8();
+        const QByteArray gameUtf8      = selectedGame.toUtf8();
+        const QByteArray pathUtf8      = gamePath.toUtf8();
 
-    char* error = nak_apply_wine_registry_settings(
-        prefixPathUtf8.constData(), protonNameUtf8.constData(),
-        protonPathUtf8.constData(), &ProtonSettingsTab::logCallback, appId);
+        char* error = nak_apply_registry_for_game_path(
+            prefixUtf8.constData(), protonNmUtf8.constData(),
+            protonPthUtf8.constData(), gameUtf8.constData(),
+            pathUtf8.constData(), &ProtonSettingsTab::logCallback);
 
-    InstallResult r;
-    if (error != nullptr) {
-      r.error = QString::fromUtf8(error);
-      nak_string_free(error);
-    }
+        InstallResult r;
+        if (error != nullptr) {
+          r.error = QString::fromUtf8(error);
+          nak_string_free(error);
+        }
 
-    return r;
-  }));
+        return r;
+      }));
 }
 
 void ProtonSettingsTab::startInstallTask(uint32_t appId, const QString& prefixPath,
@@ -342,11 +601,41 @@ void ProtonSettingsTab::startInstallTask(uint32_t appId, const QString& prefixPa
       qunsetenv("NAK_BUNDLED_UMU_RUN");
     }
 
-    const auto restoreNakEnv = qScopeGuard([] {
+    // Set WINEPREFIX so NAK (and its child processes like winetricks) always
+    // target the correct prefix, even if Proton init via umu-run fails.
+    qputenv("WINEPREFIX", prefixPathUtf8);
+
+    // Point WINE/WINESERVER at Proton's binaries so winetricks and regedit
+    // use Proton's wine instead of falling back to system wine.
+    QByteArray protonWineUtf8;
+    QByteArray protonWineserverUtf8;
+    for (const char* subdir : {"files/bin", "dist/bin"}) {
+      const QString candidate = QDir(protonPath).filePath(
+          QString::fromLatin1(subdir) + "/wine");
+      if (QFileInfo::exists(candidate)) {
+        protonWineUtf8 = candidate.toUtf8();
+        protonWineserverUtf8 =
+            QDir(protonPath)
+                .filePath(QString::fromLatin1(subdir) + "/wineserver")
+                .toUtf8();
+        break;
+      }
+    }
+    if (!protonWineUtf8.isEmpty()) {
+      qputenv("WINE", protonWineUtf8);
+      qputenv("WINESERVER", protonWineserverUtf8);
+    }
+
+    const auto restoreNakEnv = qScopeGuard([protonWineUtf8] {
       qunsetenv("NAK_USE_UMU_FOR_PREFIX");
       qunsetenv("NAK_PREFER_SYSTEM_UMU");
       qunsetenv("NAK_USE_STEAM_RUN");
       qunsetenv("NAK_BUNDLED_UMU_RUN");
+      qunsetenv("WINEPREFIX");
+      if (!protonWineUtf8.isEmpty()) {
+        qunsetenv("WINE");
+        qunsetenv("WINESERVER");
+      }
     });
 
     int cancelFlag = 0;

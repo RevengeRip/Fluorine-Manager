@@ -572,12 +572,11 @@ std::unique_ptr<Instance> InstanceManager::currentInstance() const
     return std::make_unique<Instance>(portablePath(), true, profile);
   }
 
-  if (hasPortable && !m_overrideInstanceName.has_value()) {
-    // Prefer a colocated ModOrganizer.ini for portable bundles unless a
-    // specific instance was explicitly requested on the command line.
-    log::debug("portable instance detected at '{}', preferring it over stored global "
-               "instance '{}'",
-               portablePath(), name);
+  if (hasPortable && !m_overrideInstanceName.has_value() && name.isEmpty()) {
+    // Prefer a colocated ModOrganizer.ini for portable bundles only when
+    // no instance has been explicitly selected by the user.
+    log::debug("portable instance detected at '{}', no stored instance, using portable",
+               portablePath());
     return std::make_unique<Instance>(portablePath(), true, profile);
   }
 

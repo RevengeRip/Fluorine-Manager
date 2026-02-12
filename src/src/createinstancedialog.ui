@@ -190,7 +190,7 @@
                 <bool>true</bool>
                </property>
                <property name="description">
-                <string>A portable instance stores everything in Mod Organizer's installation folder, currently %1. There can only be one portable instance per installation of Mod Organizer.</string>
+                <string>A portable instance stores everything in a single folder. The default location is %1, but you can choose any location on the next page.</string>
                </property>
               </widget>
              </item>

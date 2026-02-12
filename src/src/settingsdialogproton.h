@@ -31,6 +31,12 @@ private:
   void onRecreatePrefix();
   void onOpenPrefixFolder();
   void onFixGameRegistries();
+  void onWinetricks();
+  void onBrowsePrefixLocation();
+
+  void showGameRegistryDialog();
+  QString ensureWinetricks();
+  QString findProtonWine(const QString& protonPath);
 
   void startInstallTask(uint32_t appId, const QString& prefixPath,
                         const QString& protonName, const QString& protonPath,

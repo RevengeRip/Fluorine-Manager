@@ -1129,7 +1129,7 @@ dependencies = [
 [[package]]
 name = "nak_rust"
 version = "4.4.1"
-source = "git+https://github.com/SulfurNitride/NaK.git?branch=main#ceea41b64e6cafb8375978d7982e2c46fe826047"
+source = "git+https://github.com/SulfurNitride/NaK.git?branch=main#41915b5a095da6bc5b4960eac2c9e55771caa7c4"
 dependencies = [
  "chrono",
  "rand",

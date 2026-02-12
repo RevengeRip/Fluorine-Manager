@@ -1,5 +1,7 @@
 #include <uibase/filesystemutilities.h>
 
+#include <QDir>
+#include <QFileInfo>
 #include <QRegularExpression>
 #include <QString>
 
@@ -63,6 +65,34 @@ bool validFileName(const QString& name)
   }
 
   return (name == sanitizeFileName(name));
+}
+
+QString resolveFileCaseInsensitive(const QString& path)
+{
+#ifdef _WIN32
+  return QDir::cleanPath(path);
+#else
+  const QFileInfo info(path);
+  if (info.exists()) {
+    return info.absoluteFilePath();
+  }
+
+  QDir dir(info.path());
+  if (!dir.exists()) {
+    return QDir::cleanPath(path);
+  }
+
+  const QString target = info.fileName();
+  const QStringList entries =
+      dir.entryList(QDir::Files | QDir::Readable | QDir::Hidden | QDir::System);
+  for (const QString& entry : entries) {
+    if (entry.compare(target, Qt::CaseInsensitive) == 0) {
+      return dir.absoluteFilePath(entry);
+    }
+  }
+
+  return QDir::cleanPath(path);
+#endif
 }
 
 }  // namespace MOBase

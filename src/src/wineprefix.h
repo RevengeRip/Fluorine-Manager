@@ -31,6 +31,10 @@ public:
   bool syncProfileInisBack(
       const QList<QPair<QString, QString>>& iniMappings) const;
 
+  // Restore any stale .mo2linux_backup INI/save files left by a crash.
+  // Should be called at startup before any game runs.
+  void restoreStaleBackups() const;
+
 private:
   QString m_prefixPath;
 };

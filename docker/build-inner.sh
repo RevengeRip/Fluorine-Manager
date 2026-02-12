@@ -108,6 +108,11 @@ for d in basic_games data libs dlls; do
 done
 rm -f "${OUT_DIR}/plugins/FNIS"*.py
 
+# Source-tree Python plugins (OMOD installer, etc.).
+for f in /src/src/plugins/*.py; do
+    [ -f "${f}" ] && cp -f "${f}" "${OUT_DIR}/plugins/"
+done
+
 # ── 7z runtime ──
 SO7="build/src/src/dlls/7z.so"
 if [ -f "${SO7}" ]; then

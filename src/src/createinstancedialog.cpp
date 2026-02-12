@@ -392,7 +392,18 @@ void CreateInstanceDialog::finish()
 
     // launch the new instance
     if (ui->launch->isChecked()) {
-      InstanceManager::singleton().setCurrentInstance(ci.instanceName);
+      if (ci.type == Portable) {
+        const auto defaultPortable =
+            QDir(InstanceManager::singleton().portablePath()).absolutePath();
+        if (QDir(ci.dataPath).absolutePath() == defaultPortable) {
+          InstanceManager::singleton().setCurrentInstance("");
+        } else {
+          // Non-default portable location: store the absolute path
+          InstanceManager::singleton().setCurrentInstance(ci.dataPath);
+        }
+      } else {
+        InstanceManager::singleton().setCurrentInstance(ci.instanceName);
+      }
 
       if (mustRestart) {
         ExitModOrganizer(Exit::Restart);
@@ -489,7 +500,13 @@ CreateInstanceDialog::CreationInfo CreateInstanceDialog::rawCreationInfo() const
   ci.paths           = getSelected(&cid::Page::selectedPaths);
 
   if (ci.type == Portable) {
-    ci.dataPath = QDir(InstanceManager::singleton().portablePath()).absolutePath();
+    // Use the base path from PathsPage which defaults to portablePath()
+    // but can be changed by the user to create a portable instance anywhere.
+    if (!ci.paths.base.isEmpty()) {
+      ci.dataPath = QDir(ci.paths.base).absolutePath();
+    } else {
+      ci.dataPath = QDir(InstanceManager::singleton().portablePath()).absolutePath();
+    }
   } else {
     ci.dataPath = InstanceManager::singleton().instancePath(ci.instanceName);
   }
