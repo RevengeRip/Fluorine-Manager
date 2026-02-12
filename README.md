@@ -2,6 +2,8 @@
 
 Fluorine Manager an attempt at porting [MO2 (Mod Organizer 2)](https://github.com/ModOrganizer2/modorganizer) to linux with FUSE as the VFS system.
 
+NOTE: This is primarily for my personal use but I will see about fixing issues if I can. I use Claude/Codex, if you don't like AI please don't use this application. I'm looking for feedback not hate.
+
 <img width="4134" height="2453" alt="image" src="https://github.com/user-attachments/assets/887e042a-db74-43f8-a5aa-735d18d94cc9" />
 
 
@@ -54,4 +56,3 @@ src/       Main organizer source
 docs/      Notes and tracking
 ```
 
-NOTE: The porting was done with Claude/Codex, if you don't like AI please don't use this application. I'm looking for feedback not hate.
