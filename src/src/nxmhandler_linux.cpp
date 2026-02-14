@@ -138,7 +138,9 @@ std::optional<NxmLink> NxmLink::parse(const QString& url)
     return {};
   }
 
-  return NxmLink{gameDomain, modId, fileId, key, expires};
+  const int userId = query.queryItemValue("user_id").toInt();
+
+  return NxmLink{gameDomain, modId, fileId, key, expires, userId};
 }
 
 QString NxmLink::lookupKey() const

@@ -241,11 +241,22 @@ void ModInfo::updateFromDisc(const QString& modsDirectory, OrganizerCore& core,
   s_Overwrite = nullptr;
 
   {  // list all directories in the mod directory and make a mod out of each
-    QDir mods(QDir::fromNativeSeparators(modsDirectory));
+    const QString cleanModsDir = QDir::fromNativeSeparators(modsDirectory);
+    QDir mods(cleanModsDir);
+    if (!mods.exists()) {
+      log::error("mods directory does not exist: '{}'", cleanModsDir);
+    }
     mods.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
     QDirIterator modIter(mods);
+    std::size_t managedCount = 0;
     while (modIter.hasNext()) {
       createFrom(QDir(modIter.next()), core);
+      ++managedCount;
+    }
+    log::info("found {} managed mod directories in '{}'", managedCount, cleanModsDir);
+    if (managedCount == 0 && mods.exists()) {
+      log::warn("mods directory exists but contains no subdirectories; "
+                "check path and permissions");
     }
   }
 

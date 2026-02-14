@@ -238,10 +238,10 @@ class OblivionRemasteredGame(
     ) -> None:
         if settings & mobase.ProfileSetting.CONFIGURATION:
             game_ini_file = self.gameDirectory().absoluteFilePath(
-                r"OblivionRemastered\Content\Dev\ObvData\Oblivion.ini"
+                "OblivionRemastered/Content/Dev/ObvData/Oblivion.ini"
             )
             game_default_ini = self.gameDirectory().absoluteFilePath(
-                r"OblivionRemastered\Content\Dev\ObvData\Oblivion_default.ini"
+                "OblivionRemastered/Content/Dev/ObvData/Oblivion_default.ini"
             )
             profile_ini = directory.absoluteFilePath(
                 QFileInfo("Oblivion.ini").fileName()

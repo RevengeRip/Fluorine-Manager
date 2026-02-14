@@ -84,10 +84,15 @@ Instance::Instance(QString dir, bool portable, QString profileName)
 
 QString Instance::displayName() const
 {
-  if (isPortable())
-    return QObject::tr("Portable");
-  else
+  if (isPortable()) {
+    const auto defaultPortable =
+        QDir(InstanceManager::singleton().portablePath()).absolutePath();
+    if (QDir(m_dir).absolutePath() == defaultPortable) {
+      return QObject::tr("Portable");
+    }
     return QDir(m_dir).dirName();
+  }
+  return QDir(m_dir).dirName();
 }
 
 QString Instance::gameName() const
@@ -135,9 +140,9 @@ bool Instance::isActive() const
   auto& m = InstanceManager::singleton();
 
   if (auto i = m.currentInstance()) {
-    if (m_portable) {
-      return i->isPortable();
-    } else {
+    if (m_portable && i->isPortable()) {
+      return QDir(m_dir).absolutePath() == QDir(i->directory()).absolutePath();
+    } else if (!m_portable && !i->isPortable()) {
       return (i->displayName() == displayName());
     }
   }
@@ -760,6 +765,21 @@ bool InstanceManager::instanceExists(const QString& instanceName) const
 {
   const QDir root = globalInstancesRootPath();
   return root.exists(instanceName);
+}
+
+QStringList InstanceManager::registeredPortablePaths() const
+{
+  return GlobalSettings::portableInstances();
+}
+
+void InstanceManager::registerPortableInstance(const QString& path)
+{
+  GlobalSettings::addPortableInstance(path);
+}
+
+void InstanceManager::unregisterPortableInstance(const QString& path)
+{
+  GlobalSettings::removePortableInstance(path);
 }
 
 std::unique_ptr<Instance> selectInstance()

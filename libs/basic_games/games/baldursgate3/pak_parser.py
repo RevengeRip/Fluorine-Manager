@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import configparser
 import hashlib
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -38,7 +41,39 @@ class BG3PakParser:
 
     @cached_property
     def _divine_command(self):
-        return f"{self._utils.tools_dir / 'Divine.exe'} -g bg3 -l info"
+        divine_exe = self._utils.tools_dir / "Divine.exe"
+        if platform.system() != "Windows":
+            wine = self._find_proton_wine()
+            if wine:
+                return f'"{wine}" "{divine_exe}" -g bg3 -l info'
+            qWarning(
+                "BG3: could not find Proton/Wine to run Divine.exe. "
+                "Ensure a Proton version is configured in Settings > Proton."
+            )
+        return f'"{divine_exe}" -g bg3 -l info'
+
+    def _find_proton_wine(self) -> str | None:
+        """Locate the wine binary from the configured Proton installation."""
+        try:
+            config_dir = os.environ.get(
+                "XDG_CONFIG_HOME", os.path.join(Path.home(), ".config")
+            )
+            cfg_path = os.path.join(config_dir, "fluorine", "config.json")
+            if not os.path.isfile(cfg_path):
+                return None
+            import json as _json
+            with open(cfg_path, "r") as f:
+                cfg = _json.load(f)
+            proton_path = cfg.get("proton_path", "")
+            if not proton_path:
+                return None
+            for subdir in ("files/bin/wine", "dist/bin/wine"):
+                candidate = os.path.join(proton_path, subdir)
+                if os.path.isfile(candidate):
+                    return candidate
+        except Exception as e:
+            qDebug(f"BG3: failed to read Fluorine config for Proton wine: {e}")
+        return None
 
     @cached_property
     def _folder_pattern(self):
@@ -198,18 +233,70 @@ class BG3PakParser:
             qWarning(traceback.format_exc())
             return ""
 
+    @staticmethod
+    def _to_wine_path(path: str) -> str:
+        """Convert a Linux absolute path to a Wine Z: drive path."""
+        if path.startswith("/"):
+            return "Z:" + path.replace("/", "\\")
+        return path
+
     def run_divine(
         self, action: str, source: Path | str
     ) -> subprocess.CompletedProcess[str]:
-        command = f'{self._divine_command} -a {action} -s "{source}"'
-        result = subprocess.run(
-            command,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+        if platform.system() != "Windows":
+            # Divine.exe is a .NET Windows app — it needs Windows-style paths.
+            # Wine maps Z:\ to the Linux root, so /home/... becomes Z:\home\...
+            wine_source = self._to_wine_path(str(source))
+            wine_action = re.sub(
+                r'"(/[^"]*)"',
+                lambda m: '"' + self._to_wine_path(m.group(1)) + '"',
+                action,
+            )
+            command = f'{self._divine_command} -a {wine_action} -s "{wine_source}"'
+        else:
+            command = f'{self._divine_command} -a {action} -s "{source}"'
+        kwargs: dict = dict(
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
+        if platform.system() == "Windows":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            kwargs["shell"] = True
+            result = subprocess.run(command, **kwargs)
+        else:
+            # Set WINEPREFIX so Proton's wine uses the game's prefix.
+            wine_prefix = ""
+            try:
+                config_dir = os.environ.get(
+                    "XDG_CONFIG_HOME", os.path.join(Path.home(), ".config")
+                )
+                cfg_path = os.path.join(config_dir, "fluorine", "config.json")
+                if os.path.isfile(cfg_path):
+                    import json as _json
+                    with open(cfg_path, "r") as f:
+                        cfg = _json.load(f)
+                    wine_prefix = cfg.get("prefix_path", "")
+            except Exception:
+                pass
+
+            if os.path.exists("/.flatpak-info"):
+                # In Flatpak, host wine binaries can't execute directly
+                # (missing host libraries). Use flatpak-spawn to run on host.
+                spawn_cmd = ["flatpak-spawn", "--host"]
+                if wine_prefix:
+                    spawn_cmd.append(f"--env=WINEPREFIX={wine_prefix}")
+                spawn_cmd.extend(["bash", "-c", command])
+                result = subprocess.run(spawn_cmd, **kwargs)
+            else:
+                env = os.environ.copy()
+                if wine_prefix:
+                    env["WINEPREFIX"] = wine_prefix
+                kwargs["env"] = env
+                kwargs["shell"] = True
+                result = subprocess.run(command, **kwargs)
+
         if result.returncode:
             qWarning(
                 f"{command.replace(str(Path.home()), '~', 1).replace(str(Path.home()), '$HOME')}"

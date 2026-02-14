@@ -1,5 +1,6 @@
 import functools
 import os
+import platform
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -10,9 +11,12 @@ import mobase
 
 from . import bg3_utils
 
+_IS_LINUX = platform.system() != "Windows"
+
 
 class BG3FileMapper(mobase.IPluginFileMapper):
     current_mappings: list[mobase.Mapping] = []
+    _linux_symlinks: list[Path] = []
 
     def __init__(self, utils: bg3_utils.BG3Utils, doc_dir: Callable[[], QDir]):
         super().__init__()
@@ -26,6 +30,8 @@ class BG3FileMapper(mobase.IPluginFileMapper):
     def mappings(self) -> list[mobase.Mapping]:
         qInfo("creating custom bg3 mappings")
         self.current_mappings.clear()
+        if _IS_LINUX:
+            self._cleanup_linux_symlinks()
         active_mods = self._utils.active_mods()
         if not active_mods:
             return []
@@ -121,6 +127,18 @@ class BG3FileMapper(mobase.IPluginFileMapper):
     def create_mapping(self, file: Path, dest: Path):
         bg3_utils.create_dir_if_needed(dest)
 
+        # On Linux, FUSE cannot handle file mappings outside the game's data
+        # directory.  Create real symlinks so the game (via Proton) can find
+        # mod files in the documents/prefix directory.
+        if _IS_LINUX and not file.is_dir():
+            try:
+                if dest.is_symlink() or dest.exists():
+                    dest.unlink()
+                dest.symlink_to(file)
+                self._linux_symlinks.append(dest)
+            except OSError as e:
+                qWarning(f"BG3: failed to symlink {dest} -> {file}: {e}")
+
         self.current_mappings.append(
             mobase.Mapping(
                 source=str(file),
@@ -129,3 +147,18 @@ class BG3FileMapper(mobase.IPluginFileMapper):
                 create_target=True,
             )
         )
+
+    def _cleanup_linux_symlinks(self):
+        """Remove symlinks created by previous mappings() calls."""
+        for link in self._linux_symlinks:
+            try:
+                if link.is_symlink():
+                    link.unlink()
+            except OSError:
+                pass
+        self._linux_symlinks.clear()
+
+    def cleanup(self):
+        """Public cleanup method — call from onFinishedRun."""
+        if _IS_LINUX:
+            self._cleanup_linux_symlinks()

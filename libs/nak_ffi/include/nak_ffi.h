@@ -84,34 +84,7 @@ NakProtonList nak_find_steam_protons(void);
 void nak_proton_list_free(NakProtonList list);
 
 /* ========================================================================
- * Tier 3: Steam Shortcuts
- * ======================================================================== */
-
-/** Result from adding a Steam shortcut */
-typedef struct {
-    uint32_t app_id;
-    char *prefix_path;  /* NULL on error */
-    char *error;        /* NULL on success */
-} NakShortcutResult;
-
-/** Add a mod manager as a non-Steam game shortcut.
- *  Check result.error: NULL = success. */
-NakShortcutResult nak_add_mod_manager_shortcut(
-    const char *name,
-    const char *exe_path,
-    const char *start_dir,
-    const char *proton_name
-);
-
-/** Remove a non-Steam game shortcut by AppID.
- *  Returns NULL on success, or error message (free with nak_string_free). */
-char *nak_remove_steam_shortcut(uint32_t app_id);
-
-/** Free a NakShortcutResult */
-void nak_shortcut_result_free(NakShortcutResult result);
-
-/* ========================================================================
- * Tier 4: Steam Paths
+ * Tier 3: Steam Paths
  * ======================================================================== */
 
 /** Find the Steam installation path.
@@ -119,48 +92,7 @@ void nak_shortcut_result_free(NakShortcutResult result);
 char *nak_find_steam_path(void);
 
 /* ========================================================================
- * Tier 5: Managed Prefixes
- * ======================================================================== */
-
-/** A managed Wine prefix */
-typedef struct {
-    uint32_t app_id;
-    char *name;
-    char *prefix_path;
-    char *install_path;
-    char *manager_type;
-    char *library_path;
-    char *created;              /* ISO 8601 timestamp */
-    char *proton_config_name;   /* NULL if not set */
-} NakManagedPrefix;
-
-/** List of managed prefixes */
-typedef struct {
-    NakManagedPrefix *prefixes;
-    size_t count;
-} NakManagedPrefixList;
-
-/** Load all managed prefixes */
-NakManagedPrefixList nak_managed_prefixes_load(void);
-
-/** Register a new managed prefix (proton_config_name may be NULL) */
-void nak_managed_prefixes_register(
-    uint32_t app_id,
-    const char *name,
-    const char *prefix_path,
-    const char *install_path,
-    const char *library_path,
-    const char *proton_config_name
-);
-
-/** Unregister a managed prefix by AppID */
-void nak_managed_prefixes_unregister(uint32_t app_id);
-
-/** Free a NakManagedPrefixList */
-void nak_managed_prefix_list_free(NakManagedPrefixList list);
-
-/* ========================================================================
- * Tier 6: Dependency Installation (callback-based)
+ * Tier 4: Dependency Installation (callback-based)
  * ======================================================================== */
 
 /** Callback for status/log messages */
@@ -207,7 +139,7 @@ char *nak_apply_registry_for_game_path(
 );
 
 /* ========================================================================
- * Tier 7: Prefix Symlinks
+ * Tier 5: Prefix Symlinks
  * ======================================================================== */
 
 /** Ensure AppData/Local/Temp exists in the Wine prefix.
@@ -217,6 +149,30 @@ void nak_ensure_temp_directory(const char *prefix_path);
 /** Detect games and create symlinks from the prefix to game prefixes.
  *  Call during prefix creation. */
 void nak_create_game_symlinks_auto(const char *prefix_path);
+
+/* ========================================================================
+ * Tier 6: Logging
+ * ======================================================================== */
+
+/** Callback for NaK log messages: (level, message).
+ *  Levels: "info", "warning", "error", "install", "action", "download" */
+typedef void (*NakLogLevelCallback)(const char *level, const char *message);
+
+/** Initialize NaK logging with a callback.
+ *  Call once at startup before any other nak_* functions. */
+void nak_init_logging(NakLogLevelCallback cb);
+
+/* ========================================================================
+ * Tier 7: DXVK Configuration
+ * ======================================================================== */
+
+/** Ensure the DXVK config file exists, downloading if necessary.
+ *  Returns NULL on success, or error message (free with nak_string_free). */
+char *nak_ensure_dxvk_conf(void);
+
+/** Get the path to the DXVK config file.
+ *  Returns newly allocated string (free with nak_string_free). */
+char *nak_get_dxvk_conf_path(void);
 
 /* ========================================================================
  * General

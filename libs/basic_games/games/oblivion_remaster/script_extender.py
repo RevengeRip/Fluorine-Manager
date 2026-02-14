@@ -17,7 +17,7 @@ class OblivionRemasteredScriptExtender(mobase.ScriptExtender):
     def loaderPath(self) -> str:
         return (
             self._game.gameDirectory().absolutePath()
-            + "\\OblivionRemastered\\Binaries\\Win64\\"
+            + "/OblivionRemastered/Binaries/Win64/"
             + self.loaderName()
         )
 

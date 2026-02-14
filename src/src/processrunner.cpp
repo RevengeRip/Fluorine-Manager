@@ -63,6 +63,8 @@ void adjustForVirtualized(const IPluginGame* game, spawn::SpawnParameters& sp,
         binPath += adjustedBin;
     }
 
+#ifdef _WIN32
+    // On Windows, launch through MO2 helper to set up USVFS.
     QString cmdline = QString("launch \"%1\" \"%2\" %3")
                           .arg(QDir::toNativeSeparators(cwdPath),
                                QDir::toNativeSeparators(binPath), sp.arguments);
@@ -70,6 +72,27 @@ void adjustForVirtualized(const IPluginGame* game, spawn::SpawnParameters& sp,
     sp.binary    = QFileInfo(QCoreApplication::applicationFilePath());
     sp.arguments = cmdline;
     sp.currentDirectory.setPath(QCoreApplication::applicationDirPath());
+#else
+    // On Linux, FUSE is already mounted — resolve paths directly without
+    // launching through MO2-core (which would fail in the Proton prefix).
+    //
+    // Root Builder deploys Root/ contents to the game directory root,
+    // stripping the "Root/" prefix.  Fix paths that were remapped to
+    // <dataDir>/Root/... so they point to <gameDir>/... instead.
+    const QString gameDir = game->gameDirectory().absolutePath();
+    const QString dataDir = game->dataDirectory().absolutePath();
+    const QString rootTag = dataDir + QStringLiteral("/Root/");
+
+    if (binPath.startsWith(rootTag, Qt::CaseInsensitive)) {
+      binPath = gameDir + QStringLiteral("/") + binPath.mid(rootTag.length());
+    }
+    if (cwdPath.startsWith(rootTag, Qt::CaseInsensitive)) {
+      cwdPath = gameDir + QStringLiteral("/") + cwdPath.mid(rootTag.length());
+    }
+
+    sp.binary = QFileInfo(binPath);
+    sp.currentDirectory.setPath(cwdPath);
+#endif
   }
 }
 

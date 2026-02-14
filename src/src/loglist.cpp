@@ -28,6 +28,15 @@ using namespace MOBase;
 static LogModel* g_instance = nullptr;
 const std::size_t MaxLines  = 1000;
 
+static QString fluorineLogDir()
+{
+#ifndef _WIN32
+  return QDir::homePath() + "/.var/app/com.fluorine.manager/logs";
+#else
+  return {};
+#endif
+}
+
 static std::unique_ptr<env::Console> m_console;
 static bool m_stdout = false;
 static std::mutex m_stdoutMutex;
@@ -239,8 +248,12 @@ void LogList::clear()
 
 void LogList::openLogsFolder()
 {
-  QString logsPath = qApp->property("dataPath").toString() + "/" +
-                     QString::fromStdWString(AppConfig::logPath());
+#ifndef _WIN32
+  const QString logsPath = fluorineLogDir();
+#else
+  const QString logsPath = qApp->property("dataPath").toString() + "/" +
+                           QString::fromStdWString(AppConfig::logPath());
+#endif
   shell::Explore(logsPath);
 }
 
@@ -400,12 +413,20 @@ bool createAndMakeWritable(const std::wstring& subPath)
 
 bool setLogDirectory(const QString& dir)
 {
+#ifndef _WIN32
+  // On Linux, all logs go to ~/.var/app/com.fluorine.manager/logs/
+  const QString logDir = fluorineLogDir();
+  QDir().mkpath(logDir);
+  const auto logFile = logDir + "/" +
+                       QString::fromStdWString(AppConfig::logFileName());
+#else
   const auto logFile = dir + "/" + QString::fromStdWString(AppConfig::logPath()) + "/" +
                        QString::fromStdWString(AppConfig::logFileName());
 
   if (!createAndMakeWritable(AppConfig::logPath())) {
     return false;
   }
+#endif
 
   log::getDefault().setFile(MOBase::log::File::single(logFile.toStdWString()));
 

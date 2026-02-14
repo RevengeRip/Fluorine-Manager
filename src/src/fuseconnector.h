@@ -61,6 +61,8 @@ public:
 
 private:
   void flushStaging();
+  void deployExternalMappings(const MappingType& mapping, const QString& dataDir);
+  void cleanupExternalMappings();
 
   std::string m_mountPoint;
   std::string m_stagingDir;
@@ -70,8 +72,15 @@ private:
   std::string m_dataDirPath;
   int m_backingFd = -1;
   std::vector<CachedBaseFile> m_baseFileCache;
+  std::string m_cachedDataDirPath;
 
   std::vector<std::pair<std::string, std::string>> m_lastMods;
+
+  // Symlinks created for non-data-dir mappings (e.g. Paks, OBSE, UE4SS).
+  std::vector<std::string> m_externalSymlinks;
+  // File-level mappings targeting the data directory (e.g. plugins.txt).
+  // Injected into the VFS tree after building.  (relPath, absRealPath)
+  std::vector<std::pair<std::string, std::string>> m_extraVfsFiles;
 
   std::shared_ptr<Mo2FsContext> m_context;
 

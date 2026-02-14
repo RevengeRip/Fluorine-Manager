@@ -15,29 +15,41 @@ class LSLibRetriever:
     def __init__(self, utils: bg3_utils.BG3Utils):
         self._utils = utils
 
+    # Files that MUST be present for Divine to work.
+    _REQUIRED_FILES = {
+        "Divine.dll",
+        "Divine.exe",
+        "LSLib.dll",
+    }
+
+    # Additional files that may or may not be in a given LSLib release.
+    _OPTIONAL_FILES = {
+        "CommandLineArgumentsParser.dll",
+        "Divine.dll.config",
+        "Divine.runtimeconfig.json",
+        "K4os.Compression.LZ4.dll",
+        "K4os.Compression.LZ4.Streams.dll",
+        "LSLibNative.dll",
+        "LZ4.dll",
+        "Newtonsoft.Json.dll",
+        "System.IO.Hashing.dll",
+        "ZstdSharp.dll",
+    }
+
     @cached_property
     def _needed_lslib_files(self):
         return {
             self._utils.tools_dir / x
-            for x in {
-                "CommandLineArgumentsParser.dll",
-                "Divine.dll",
-                "Divine.dll.config",
-                "Divine.exe",
-                "Divine.runtimeconfig.json",
-                "K4os.Compression.LZ4.dll",
-                "K4os.Compression.LZ4.Streams.dll",
-                "LSLib.dll",
-                "LSLibNative.dll",
-                "LZ4.dll",
-                "Newtonsoft.Json.dll",
-                "System.IO.Hashing.dll",
-                "ZstdSharp.dll",
-            }
+            for x in self._REQUIRED_FILES | self._OPTIONAL_FILES
         }
 
     def download_lslib_if_missing(self, force: bool = False) -> bool:
-        if not force and all(x.exists() for x in self._needed_lslib_files):
+        # Only check required files to avoid re-downloading when optional
+        # files were not present in the archive.
+        required_paths = {
+            self._utils.tools_dir / x for x in self._REQUIRED_FILES
+        }
+        if not force and all(x.exists() for x in required_paths):
             return True
         try:
             self._utils.tools_dir.mkdir(exist_ok=True, parents=True)
@@ -133,21 +145,40 @@ class LSLibRetriever:
                 win_title, len(self._needed_lslib_files), msg=dialog_message
             )
             with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                # Build a lookup from basename → zip entry so we can handle
+                # any zip directory layout (Packed/Tools/, Tools/, flat, etc.)
+                zip_names = zip_ref.namelist()
+                entry_map: dict[str, str] = {}
+                for zn in zip_names:
+                    base = zn.rsplit("/", 1)[-1] if "/" in zn else zn
+                    if base:
+                        entry_map[base] = zn
+
                 for file in self._needed_lslib_files:
                     if downloaded or not file.exists():
-                        shutil.move(
-                            zip_ref.extract(
-                                f"Packed/Tools/{file.name}", self._utils.tools_dir
-                            ),
-                            file,
-                        )
+                        zip_entry = entry_map.get(file.name)
+                        if zip_entry is None:
+                            if file.name in self._REQUIRED_FILES:
+                                raise KeyError(
+                                    f"Required file '{file.name}' not found in archive"
+                                )
+                            qDebug(f"LSLib: optional file '{file.name}' not in archive, skipping")
+                            continue
+                        extracted = zip_ref.extract(zip_entry, self._utils.tools_dir)
+                        # Move from nested zip path to flat tools_dir
+                        if extracted != str(file):
+                            shutil.move(extracted, file)
                     x_progress.setValue(x_progress.value() + 1)
                     QApplication.processEvents()
                     if x_progress.wasCanceled():
                         qWarning("processing canceled by user")
                         return False
             x_progress.close()
-            shutil.rmtree(self._utils.tools_dir / "Packed", ignore_errors=True)
+            # Clean up any nested directories left from extraction
+            for subdir in ("Packed", "Tools"):
+                nested = self._utils.tools_dir / subdir
+                if nested.is_dir():
+                    shutil.rmtree(nested, ignore_errors=True)
         except Exception as e:
             qDebug(f"Extraction failed: {e}")
             err = QMessageBox(self._utils.main_window)

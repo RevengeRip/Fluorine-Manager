@@ -378,3 +378,22 @@ VfsTree buildDataDirVfs(const std::vector<CachedBaseFile>& cached_files,
 
   return tree;
 }
+
+void injectExtraFiles(
+    VfsTree& tree,
+    const std::vector<std::pair<std::string, std::string>>& extra_files)
+{
+  for (const auto& [relPath, realPath] : extra_files) {
+    auto components = splitPath(relPath);
+    if (components.empty()) {
+      continue;
+    }
+
+    std::error_code ec;
+    const auto size = fs::file_size(realPath, ec);
+    tree.root.insertFile(components, realPath, ec ? 0ULL : size,
+                         std::chrono::system_clock::now(), "_profile",
+                         /*is_backing=*/false);
+    ++tree.file_count;
+  }
+}

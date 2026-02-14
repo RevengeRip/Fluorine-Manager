@@ -175,6 +175,16 @@ bool ProxyPython::init(IOrganizer* moInfo)
             libpath,
             std::filesystem::path{IOrganizer::getPluginDataPath().toStdWString()}};
 
+        // pluginDataPath() returns a writable directory (plugin_data/) separate
+        // from the possibly-read-only plugins/data/ that ships bundled assets
+        // like the DDS module.  Add the bundled path too so imports still work.
+        {
+            auto bundledData = pluginDataRoot / "data";
+            if (fs::is_directory(bundledData)) {
+                paths.emplace_back(bundledData);
+            }
+        }
+
         // Allow portable/AppImage builds to ship Python packages next to the app.
         // MO2_PYTHON_DIR (set by AppRun) points to the writable python/ dir
         // next to the AppImage; fall back to <exe_dir>/python.

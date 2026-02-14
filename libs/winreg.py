@@ -10,5 +10,16 @@ def OpenKey(*_args, **_kwargs):
     raise FileNotFoundError("winreg is not available on this platform")
 
 
+OpenKeyEx = OpenKey
+
+
 def QueryValueEx(*_args, **_kwargs):
+    raise FileNotFoundError("winreg is not available on this platform")
+
+
+def QueryInfoKey(*_args, **_kwargs):
+    raise FileNotFoundError("winreg is not available on this platform")
+
+
+def EnumKey(*_args, **_kwargs):
     raise FileNotFoundError("winreg is not available on this platform")

@@ -14,6 +14,7 @@ struct NxmLink
   uint64_t file_id = 0;
   QString key;
   uint64_t expires = 0;
+  int user_id      = 0;
 
   static std::optional<NxmLink> parse(const QString& url);
   QString lookupKey() const;

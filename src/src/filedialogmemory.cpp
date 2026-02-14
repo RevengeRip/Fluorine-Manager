@@ -72,6 +72,15 @@ QString FileDialogMemory::getExistingDirectory(const QString& dirID, QWidget* pa
     }
   }
 
+#ifndef _WIN32
+  // On Flatpak, the native file dialog goes through the XDG Desktop Portal,
+  // which returns FUSE paths (/run/user/.../doc/...) that may not properly
+  // expose directory contents.  Use the Qt built-in dialog to get real paths.
+  if (qEnvironmentVariableIsSet("FLATPAK_ID")) {
+    options |= QFileDialog::DontUseNativeDialog;
+  }
+#endif
+
   QString result =
       QFileDialog::getExistingDirectory(parent, caption, currentDir, options);
 

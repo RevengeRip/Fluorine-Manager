@@ -309,7 +309,10 @@ void OrganizerCore::updateExecutablesList()
 
 void OrganizerCore::updateModInfoFromDisc()
 {
-  ModInfo::updateFromDisc(m_Settings.paths().mods(), *this,
+  const QString modsPath = m_Settings.paths().mods();
+  log::debug("updateModInfoFromDisc: base='{}', mods='{}'",
+             m_Settings.paths().base(), modsPath);
+  ModInfo::updateFromDisc(modsPath, *this,
                           m_Settings.interface().displayForeign(),
                           m_Settings.refreshThreadCount());
 }
@@ -465,8 +468,11 @@ void OrganizerCore::downloadRequested(QNetworkReply* reply, QString gameName, in
 
 void OrganizerCore::removeOrigin(const QString& name)
 {
-  FilesOrigin& origin = m_DirectoryStructure->getOriginByName(ToWString(name));
-  origin.enable(false);
+  const auto wname = ToWString(name);
+  if (m_DirectoryStructure->originExists(wname)) {
+    FilesOrigin& origin = m_DirectoryStructure->getOriginByName(wname);
+    origin.enable(false);
+  }
   refreshLists();
 }
 
@@ -846,8 +852,15 @@ void OrganizerCore::setPersistent(const QString& pluginName, const QString& key,
 
 QString OrganizerCore::pluginDataPath()
 {
+#ifndef _WIN32
+  // On Linux, the plugins/ directory may contain symlinks into a read-only
+  // bundled directory (e.g. /app/ in Flatpak).  Place plugin data in a
+  // separate writable directory so mkdir() never hits a read-only FS.
+  return AppConfig::basePath() + "/plugin_data";
+#else
   return AppConfig::basePath() + "/" + ToQString(AppConfig::pluginPath()) +
          "/data";
+#endif
 }
 
 MOBase::IModInterface* OrganizerCore::installMod(const QString& archivePath,
@@ -1782,10 +1795,11 @@ void OrganizerCore::modPrioritiesChanged(const QModelIndexList& indices)
     int priority = currentProfile()->getModPriority(i);
     if (currentProfile()->modEnabled(i)) {
       ModInfo::Ptr modInfo = ModInfo::getByIndex(i);
+      const auto name = MOBase::ToWString(modInfo->internalName());
       // priorities in the directory structure are one higher because data is 0
-      directoryStructure()
-          ->getOriginByName(MOBase::ToWString(modInfo->internalName()))
-          .setPriority(priority + 1);
+      if (directoryStructure()->originExists(name)) {
+        directoryStructure()->getOriginByName(name).setPriority(priority + 1);
+      }
     }
   }
   refreshBSAList();
@@ -2221,11 +2235,12 @@ void OrganizerCore::afterRun(const QFileInfo& binary, DWORD exitCode)
     QFile::remove(m_CurrentProfile->getLoadOrderFileName());
   }
 
-  refreshDirectoryStructure();
-
 #ifndef _WIN32
-  // Flush staged VFS writes to overwrite and rebuild tree
-  m_USVFS.flushStagingLive();
+  // Unmount the FUSE VFS now that the application has exited.  unmount()
+  // flushes the staging directory (moves new/changed files to overwrite)
+  // and tears down the FUSE session.  This mirrors Windows behaviour where
+  // USVFS is only active while a hooked process is running.
+  m_USVFS.unmount();
 
   if (m_CurrentProfile != nullptr) {
     const QString prefixPathStr = resolveWinePrefixPath(m_Settings, managedGame());
@@ -2271,6 +2286,11 @@ void OrganizerCore::afterRun(const QFileInfo& binary, DWORD exitCode)
     }
   }
 #endif
+
+  // Refresh directory structure after VFS is unmounted so the refresher
+  // reads the real (vanilla) data directory plus individual mod directories,
+  // matching Windows USVFS behaviour.
+  refreshDirectoryStructure();
 
   refreshESPList(true);
   savePluginList();

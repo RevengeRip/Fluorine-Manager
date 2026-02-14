@@ -77,4 +77,11 @@ VfsTree buildDataDirVfs(const std::vector<CachedBaseFile>& cached_files,
                         const std::vector<std::pair<std::string, std::string>>& mods,
                         const std::string& overwrite_dir);
 
+// Inject individual file mappings into an already-built VFS tree.
+// Each entry is (relative_vfs_path, absolute_real_path).  Inserted with
+// highest priority (overwrites any existing entry at the same path).
+void injectExtraFiles(
+    VfsTree& tree,
+    const std::vector<std::pair<std::string, std::string>>& extra_files);
+
 #endif

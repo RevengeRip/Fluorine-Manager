@@ -317,6 +317,12 @@ public:
   //
   QString iniPath(const QString& instanceDir) const;
 
+  // persistent registry of portable instance paths (stored in GlobalSettings)
+  //
+  QStringList registeredPortablePaths() const;
+  void registerPortableInstance(const QString& path);
+  void unregisterPortableInstance(const QString& path);
+
 private:
   InstanceManager();
 

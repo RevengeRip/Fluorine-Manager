@@ -32,7 +32,7 @@ if [ "${MODE}" = "bundle" ]; then
     # ── Build a distributable .flatpak file ──
     echo ""
     echo "Building Flatpak bundle (this may take a while)..."
-    flatpak-builder --repo="${PROJECT_DIR}/flatpak-repo" --force-clean \
+    flatpak-builder --repo="${PROJECT_DIR}/flatpak-repo" --force-clean --ccache \
         "${BUILD_DIR}" "${MANIFEST}"
     flatpak build-bundle \
         --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
@@ -47,7 +47,7 @@ else
     # ── Build and install locally ──
     echo ""
     echo "Building and installing Flatpak locally (this may take a while)..."
-    flatpak-builder --install --user --force-clean \
+    flatpak-builder --install --user --force-clean --ccache \
         "${BUILD_DIR}" "${MANIFEST}"
     echo ""
     echo "=== Flatpak installed successfully ==="

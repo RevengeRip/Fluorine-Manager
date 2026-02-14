@@ -6,12 +6,26 @@
 #include "settingsdialognexus.h"
 #include "shared/appconfig.h"
 #include "ui_createinstancedialog.h"
+#include <QFileDialog>
 #include <iplugingame.h>
 #include <report.h>
 #include <utility.h>
 
 namespace cid
 {
+
+// On Flatpak the native file dialog returns XDG portal FUSE paths that may
+// not properly expose directory contents.  Returns options that force the
+// Qt built-in dialog when running inside Flatpak.
+static QFileDialog::Options flatpakSafeOptions()
+{
+  QFileDialog::Options opts;
+#ifndef _WIN32
+  if (qEnvironmentVariableIsSet("FLATPAK_ID"))
+    opts |= QFileDialog::DontUseNativeDialog;
+#endif
+  return opts;
+}
 
 using namespace MOBase;
 using MOBase::TaskDialog;
@@ -314,7 +328,8 @@ void GamePage::select(IPluginGame* game, const QString& dir)
 
         const auto path = QFileDialog::getExistingDirectory(
             &m_dlg,
-            QObject::tr("Find game installation for %1").arg(game->displayGameName()));
+            QObject::tr("Find game installation for %1").arg(game->displayGameName()),
+            {}, flatpakSafeOptions());
 
         if (path.isEmpty()) {
           // cancelled
@@ -361,8 +376,8 @@ void GamePage::select(IPluginGame* game, const QString& dir)
 
 void GamePage::selectCustom()
 {
-  const auto path =
-      QFileDialog::getExistingDirectory(&m_dlg, QObject::tr("Find game installation"));
+  const auto path = QFileDialog::getExistingDirectory(
+      &m_dlg, QObject::tr("Find game installation"), {}, flatpakSafeOptions());
 
   if (path.isEmpty()) {
     // reselect the previous button
@@ -1045,6 +1060,20 @@ void PathsPage::doActivated(bool firstTime)
   // regenerated
   const bool changed = (m_lastInstanceName != name) || (m_lastType != type);
 
+  const bool isGlobal = (type == CreateInstanceDialog::Global);
+
+  // Global instances have a fixed location derived from the instance name;
+  // the user should not be able to browse to an arbitrary directory.
+  ui->location->setReadOnly(isGlobal);
+  ui->browseLocation->setVisible(!isGlobal);
+  ui->advancedPathOptions->setVisible(!isGlobal);
+
+  // If switching from portable back to global, reset to simple view
+  if (isGlobal && ui->advancedPathOptions->isChecked()) {
+    ui->advancedPathOptions->setChecked(false);
+    ui->pathPages->setCurrentIndex(0);
+  }
+
   // generating and paths
   setPaths(name, changed);
   checkPaths();
@@ -1085,7 +1114,8 @@ void PathsPage::onChanged()
 
 void PathsPage::browse(QLineEdit* e)
 {
-  const auto s = QFileDialog::getExistingDirectory(&m_dlg, {}, e->text());
+  const auto s =
+      QFileDialog::getExistingDirectory(&m_dlg, {}, e->text(), flatpakSafeOptions());
   if (s.isNull() || s.isEmpty()) {
     return;
   }
@@ -1148,6 +1178,8 @@ void PathsPage::setPaths(const QString& name, bool force)
   } else {
     const auto root = InstanceManager::singleton().globalInstancesRootPath();
     basePath        = root + "/" + name;
+    // Global instances always use the auto-derived path
+    force = true;
   }
 
   basePath = QDir::toNativeSeparators(QDir::cleanPath(basePath));

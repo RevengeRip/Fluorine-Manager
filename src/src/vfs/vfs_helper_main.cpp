@@ -32,6 +32,7 @@ struct HelperConfig
   std::string data_dir_name;
   std::string overwrite_dir;
   std::vector<std::pair<std::string, std::string>> mods;
+  std::vector<std::pair<std::string, std::string>> extra_files;
 };
 
 static HelperConfig readConfig(const std::string& path)
@@ -65,6 +66,11 @@ static HelperConfig readConfig(const std::string& path)
       const auto pipe = val.find('|');
       if (pipe != std::string::npos) {
         cfg.mods.emplace_back(val.substr(0, pipe), val.substr(pipe + 1));
+      }
+    } else if (key == "extra_file") {
+      const auto pipe = val.find('|');
+      if (pipe != std::string::npos) {
+        cfg.extra_files.emplace_back(val.substr(0, pipe), val.substr(pipe + 1));
       }
     }
   }
@@ -206,6 +212,7 @@ int main(int argc, char* argv[])
   auto tree = std::make_shared<VfsTree>(
       buildDataDirVfs(baseFileCache, dataDirPath, config.mods,
                       config.overwrite_dir));
+  injectExtraFiles(*tree, config.extra_files);
 
   auto context            = std::make_shared<Mo2FsContext>();
   context->tree           = tree;
@@ -272,6 +279,7 @@ int main(int argc, char* argv[])
       auto newConfig = readConfig(configPath);
       auto newTree   = std::make_shared<VfsTree>(buildDataDirVfs(
           baseFileCache, dataDirPath, newConfig.mods, newConfig.overwrite_dir));
+      injectExtraFiles(*newTree, newConfig.extra_files);
 
       {
         std::unique_lock lock(context->tree_mutex);
@@ -286,6 +294,7 @@ int main(int argc, char* argv[])
 
       auto newTree = std::make_shared<VfsTree>(buildDataDirVfs(
           baseFileCache, dataDirPath, config.mods, config.overwrite_dir));
+      injectExtraFiles(*newTree, config.extra_files);
 
       {
         std::unique_lock lock(context->tree_mutex);

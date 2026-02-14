@@ -484,7 +484,11 @@ void GameGamebryo::copyToProfile(QString const& sourcePath,
                                  QString const& sourceFileName,
                                  QString const& destinationFileName)
 {
-  QString filePath = destinationDirectory.absoluteFilePath(destinationFileName);
+  // Use case-insensitive check so we don't create duplicates on Linux
+  // (e.g. a profile with "SkyrimPrefs.ini" from Windows is not overwritten
+  // by a new "skyrimprefs.ini" copy).
+  QString filePath = resolveFileCaseInsensitive(
+      destinationDirectory.absoluteFilePath(destinationFileName));
   if (!QFileInfo(filePath).exists()) {
     QString sourceFile = sourcePath + "/" + sourceFileName;
     // On Linux, try case-insensitive match if the exact source doesn't exist

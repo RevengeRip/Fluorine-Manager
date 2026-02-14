@@ -39,7 +39,7 @@ class PaksModel(QAbstractItemModel):
         profile = QDir(self._organizer.profilePath())
         paks_txt = QFileInfo(profile.absoluteFilePath("paks.txt"))
         if paks_txt.exists():
-            with open(paks_txt.absoluteFilePath(), "r") as paks_file:
+            with open(paks_txt.absoluteFilePath(), "r", encoding="utf-8", errors="replace") as paks_file:
                 index = 0
                 for line in paks_file:
                     self.paks[index] = (line, "", "", "")

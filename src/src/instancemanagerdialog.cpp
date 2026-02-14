@@ -258,6 +258,25 @@ void InstanceManagerDialog::updateInstances()
     return (MOBase::naturalCompare(a->displayName(), b->displayName()) < 0);
   });
 
+  // add registered portable instances (non-default paths)
+  const QString defaultPortable = QDir(m.portablePath()).absolutePath();
+  for (const auto& path : m.registeredPortablePaths()) {
+    // skip the default portable path (handled separately below)
+    if (QDir(path).absolutePath() == defaultPortable) {
+      continue;
+    }
+    // skip paths where ModOrganizer.ini no longer exists
+    if (!QFileInfo::exists(QDir(path).filePath("ModOrganizer.ini"))) {
+      continue;
+    }
+    m_instances.push_back(std::make_unique<Instance>(path, true));
+  }
+
+  // re-sort to interleave registered portables alphabetically
+  std::sort(m_instances.begin(), m_instances.end(), [](auto&& a, auto&& b) {
+    return (MOBase::naturalCompare(a->displayName(), b->displayName()) < 0);
+  });
+
   if (m.portableInstanceExists()) {
     m_instances.insert(m_instances.begin(),
                        std::make_unique<Instance>(m.portablePath(), true));
@@ -342,8 +361,9 @@ void InstanceManagerDialog::selectActiveInstance()
   const auto active = InstanceManager::singleton().currentInstance();
 
   if (active) {
+    const QString activeDir = QDir(active->directory()).absolutePath();
     for (std::size_t i = 0; i < m_instances.size(); ++i) {
-      if (m_instances[i]->displayName() == active->displayName()) {
+      if (QDir(m_instances[i]->directory()).absolutePath() == activeDir) {
         select(i);
 
         ui->list->scrollTo(m_filter.mapFromSource(m_filter.sourceModel()->index(i, 0)));
@@ -588,6 +608,11 @@ void InstanceManagerDialog::deleteInstance()
     return;
   }
 
+  // unregister portable instance from the persistent list
+  if (i->isPortable()) {
+    InstanceManager::singleton().unregisterPortableInstance(i->directory());
+  }
+
   // updating ui
   updateInstances();
   updateList();
@@ -750,9 +775,19 @@ void InstanceManagerDialog::setButtonsEnabled(bool b)
 
 void InstanceManagerDialog::openExistingPortable()
 {
+  // On Flatpak, the native file dialog goes through the XDG Desktop Portal,
+  // which returns FUSE paths (/run/user/.../doc/...) that may not properly
+  // expose directory contents.  Use the Qt built-in dialog to get real paths.
+  QFileDialog::Options opts;
+#ifndef _WIN32
+  if (qEnvironmentVariableIsSet("FLATPAK_ID")) {
+    opts |= QFileDialog::DontUseNativeDialog;
+  }
+#endif
+
   const QString dir = QFileDialog::getExistingDirectory(
       this, tr("Select portable instance folder"),
-      QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
+      QStandardPaths::writableLocation(QStandardPaths::HomeLocation), opts);
 
   if (dir.isEmpty()) {
     return;
@@ -766,12 +801,20 @@ void InstanceManagerDialog::openExistingPortable()
     return;
   }
 
-  // Switch directly to this portable instance
-  InstanceManager::singleton().setCurrentInstance(dir);
+  // Register the portable instance so it persists in the sidebar
+  auto& m = InstanceManager::singleton();
+  m.registerPortableInstance(dir);
 
-  if (m_restartOnSelect) {
-    ExitModOrganizer(Exit::Restart);
+  // Refresh the instance list and select the newly added entry
+  updateInstances();
+  updateList();
+
+  // Find and select the new instance by directory
+  const QString canonical = QDir(dir).absolutePath();
+  for (std::size_t i = 0; i < m_instances.size(); ++i) {
+    if (QDir(m_instances[i]->directory()).absolutePath() == canonical) {
+      select(i);
+      break;
+    }
   }
-
-  accept();
 }

@@ -966,6 +966,11 @@ public:
   // resets anything that the user can disable
   static void resetDialogs();
 
+  // persistent registry of portable instance paths
+  static QStringList portableInstances();
+  static void addPortableInstance(const QString& path);
+  static void removePortableInstance(const QString& path);
+
 private:
   static QSettings settings();
 };

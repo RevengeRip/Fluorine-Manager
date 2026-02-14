@@ -316,66 +316,7 @@ pub unsafe extern "C" fn nak_proton_list_free(list: NakProtonList) {
 }
 
 // ============================================================================
-// Tier 3: Steam Shortcuts
-// ============================================================================
-
-/// Result from adding a Steam shortcut
-#[repr(C)]
-pub struct NakShortcutResult {
-    pub app_id: u32,
-    pub prefix_path: *mut c_char,
-    pub error: *mut c_char, // null on success
-}
-
-/// Add a mod manager as a non-Steam game shortcut
-///
-/// Returns a NakShortcutResult. Check `error` field - null means success.
-#[no_mangle]
-pub unsafe extern "C" fn nak_add_mod_manager_shortcut(
-    name: *const c_char,
-    exe_path: *const c_char,
-    start_dir: *const c_char,
-    proton_name: *const c_char,
-) -> NakShortcutResult {
-    let name = unsafe { from_cstr(name) };
-    let exe = unsafe { from_cstr(exe_path) };
-    let dir = unsafe { from_cstr(start_dir) };
-    let proton = unsafe { from_cstr(proton_name) };
-
-    match nak_rust::steam::add_mod_manager_shortcut(name, exe, dir, proton, None, false) {
-        Ok(result) => NakShortcutResult {
-            app_id: result.app_id,
-            prefix_path: to_cstring(&result.prefix_path.to_string_lossy()),
-            error: ptr::null_mut(),
-        },
-        Err(e) => NakShortcutResult {
-            app_id: 0,
-            prefix_path: ptr::null_mut(),
-            error: error_to_cstring(e),
-        },
-    }
-}
-
-/// Remove a non-Steam game shortcut by AppID
-///
-/// Returns null on success, or an error message string (caller must free with nak_string_free).
-#[no_mangle]
-pub unsafe extern "C" fn nak_remove_steam_shortcut(app_id: u32) -> *mut c_char {
-    match nak_rust::steam::remove_steam_shortcut(app_id) {
-        Ok(()) => ptr::null_mut(),
-        Err(e) => error_to_cstring(e),
-    }
-}
-
-/// Free a NakShortcutResult
-#[no_mangle]
-pub unsafe extern "C" fn nak_shortcut_result_free(result: NakShortcutResult) {
-    free_if_nonnull(result.prefix_path);
-    free_if_nonnull(result.error);
-}
-
-// ============================================================================
-// Tier 4: Steam Paths
+// Tier 3: Steam Paths
 // ============================================================================
 
 /// Find the Steam installation path
@@ -391,119 +332,7 @@ pub extern "C" fn nak_find_steam_path() -> *mut c_char {
 }
 
 // ============================================================================
-// Tier 5: Managed Prefixes
-// ============================================================================
-
-/// A managed Wine prefix (C-compatible)
-#[repr(C)]
-pub struct NakManagedPrefix {
-    pub app_id: u32,
-    pub name: *mut c_char,
-    pub prefix_path: *mut c_char,
-    pub install_path: *mut c_char,
-    pub manager_type: *mut c_char,
-    pub library_path: *mut c_char,
-    pub created: *mut c_char,
-    pub proton_config_name: *mut c_char, // null if not set
-}
-
-/// List of managed prefixes
-#[repr(C)]
-pub struct NakManagedPrefixList {
-    pub prefixes: *mut NakManagedPrefix,
-    pub count: usize,
-}
-
-/// Load all managed prefixes
-#[no_mangle]
-pub extern "C" fn nak_managed_prefixes_load() -> NakManagedPrefixList {
-    let managed = nak_rust::config::ManagedPrefixes::load();
-
-    let mut ffi_prefixes: Vec<NakManagedPrefix> = managed
-        .prefixes
-        .iter()
-        .map(|p| NakManagedPrefix {
-            app_id: p.app_id,
-            name: to_cstring(&p.name),
-            prefix_path: to_cstring(&p.prefix_path),
-            install_path: to_cstring(&p.install_path),
-            manager_type: to_cstring(&p.manager_type.to_string()),
-            library_path: to_cstring(&p.library_path),
-            created: to_cstring(&p.created.to_rfc3339()),
-            proton_config_name: to_cstring_opt(p.proton_config_name.as_deref()),
-        })
-        .collect();
-
-    let list = NakManagedPrefixList {
-        prefixes: ffi_prefixes.as_mut_ptr(),
-        count: ffi_prefixes.len(),
-    };
-    std::mem::forget(ffi_prefixes);
-    list
-}
-
-/// Register a new managed prefix
-#[no_mangle]
-pub unsafe extern "C" fn nak_managed_prefixes_register(
-    app_id: u32,
-    name: *const c_char,
-    prefix_path: *const c_char,
-    install_path: *const c_char,
-    library_path: *const c_char,
-    proton_config_name: *const c_char,
-) {
-    let name = unsafe { from_cstr(name) };
-    let prefix = unsafe { from_cstr(prefix_path) };
-    let install = unsafe { from_cstr(install_path) };
-    let library = unsafe { from_cstr(library_path) };
-    let proton = if proton_config_name.is_null() {
-        None
-    } else {
-        let s = unsafe { from_cstr(proton_config_name) };
-        if s.is_empty() {
-            None
-        } else {
-            Some(s)
-        }
-    };
-
-    nak_rust::config::ManagedPrefixes::register(
-        app_id,
-        name,
-        prefix,
-        install,
-        nak_rust::config::ManagerType::MO2,
-        library,
-        proton,
-    );
-}
-
-/// Unregister a managed prefix by AppID
-#[no_mangle]
-pub extern "C" fn nak_managed_prefixes_unregister(app_id: u32) {
-    nak_rust::config::ManagedPrefixes::unregister(app_id);
-}
-
-/// Free a NakManagedPrefixList
-#[no_mangle]
-pub unsafe extern "C" fn nak_managed_prefix_list_free(list: NakManagedPrefixList) {
-    if list.prefixes.is_null() {
-        return;
-    }
-    let prefixes = unsafe { Vec::from_raw_parts(list.prefixes, list.count, list.count) };
-    for p in prefixes {
-        free_if_nonnull(p.name);
-        free_if_nonnull(p.prefix_path);
-        free_if_nonnull(p.install_path);
-        free_if_nonnull(p.manager_type);
-        free_if_nonnull(p.library_path);
-        free_if_nonnull(p.created);
-        free_if_nonnull(p.proton_config_name);
-    }
-}
-
-// ============================================================================
-// Tier 6: Dependency Installation (callback-based)
+// Tier 4: Dependency Installation (callback-based)
 // ============================================================================
 
 /// Callback for status messages: fn(message: *const c_char)
@@ -712,7 +541,7 @@ pub unsafe extern "C" fn nak_apply_registry_for_game_path(
 }
 
 // ============================================================================
-// Tier 7: Prefix Symlinks
+// Tier 5: Prefix Symlinks
 // ============================================================================
 
 /// Ensure the Temp directory exists in the Wine prefix's AppData/Local.
@@ -731,6 +560,54 @@ pub unsafe extern "C" fn nak_ensure_temp_directory(prefix_path: *const c_char) {
 pub unsafe extern "C" fn nak_create_game_symlinks_auto(prefix_path: *const c_char) {
     let prefix = unsafe { from_cstr(prefix_path) };
     nak_rust::installers::symlinks::create_game_symlinks_auto(Path::new(prefix));
+}
+
+// ============================================================================
+// Tier 6: Logging
+// ============================================================================
+
+/// Callback for NaK log messages: fn(level: *const c_char, message: *const c_char)
+///
+/// Levels: "info", "warning", "error", "install", "action", "download"
+pub type NakLogLevelCallback = Option<unsafe extern "C" fn(*const c_char, *const c_char)>;
+
+/// Initialize NaK logging with a callback.
+///
+/// The callback receives (level, message) for all NaK internal log messages.
+/// Call once at startup before any other nak_* functions.
+#[no_mangle]
+pub unsafe extern "C" fn nak_init_logging(cb: NakLogLevelCallback) {
+    if let Some(callback) = cb {
+        nak_rust::logging::set_log_callback(move |level: &str, message: &str| {
+            let c_level = CString::new(level).unwrap_or_default();
+            let c_msg = CString::new(message).unwrap_or_default();
+            unsafe { callback(c_level.as_ptr(), c_msg.as_ptr()) };
+        });
+    }
+}
+
+// ============================================================================
+// Tier 7: DXVK Configuration
+// ============================================================================
+
+/// Ensure the DXVK config file exists, downloading if necessary.
+///
+/// Returns null on success, or an error message (caller must free with nak_string_free).
+#[no_mangle]
+pub extern "C" fn nak_ensure_dxvk_conf() -> *mut c_char {
+    match nak_rust::dxvk::ensure_dxvk_conf() {
+        Ok(_) => ptr::null_mut(),
+        Err(e) => error_to_cstring(e),
+    }
+}
+
+/// Get the path to the DXVK config file.
+///
+/// Returns a newly allocated string (caller must free with nak_string_free).
+#[no_mangle]
+pub extern "C" fn nak_get_dxvk_conf_path() -> *mut c_char {
+    let path = nak_rust::dxvk::get_dxvk_conf_path();
+    to_cstring(&path.to_string_lossy())
 }
 
 // ============================================================================

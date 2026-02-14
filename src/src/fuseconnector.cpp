@@ -252,8 +252,11 @@ bool FuseConnector::mount(
   m_dataDirName  = data_dir_name.toStdString();
   m_lastMods     = mods;
 
-  // Compute the actual data directory path and mount directly on it
-  m_dataDirPath = (fs::path(m_gameDir) / m_dataDirName).string();
+  // Use the caller-supplied data directory path directly.  Re-computing it
+  // as gameDir/dataDirName breaks games where the data directory IS the game
+  // directory (e.g. BG3 with GameDataPath=""), because dirName() returns the
+  // last path component and appending it produces a non-existent double path.
+  m_dataDirPath = mount_point.toStdString();
   m_mountPoint  = m_dataDirPath;
 
   if (!fs::exists(m_dataDirPath)) {
@@ -275,10 +278,19 @@ bool FuseConnector::mount(
   fs::create_directories(m_stagingDir, ec);
   fs::create_directories(m_overwriteDir, ec);
 
-  // Scan + cache base game files BEFORE mounting (after mount they're hidden)
-  m_baseFileCache = scanDataDir(m_dataDirPath);
-  log::debug("Cached {} base game entries from {}", m_baseFileCache.size(),
-             QString::fromStdString(m_dataDirPath));
+  // Scan + cache base game files BEFORE mounting (after mount they're hidden).
+  // Reuse the cache across mount/unmount cycles since base game files don't
+  // change between runs — this avoids a full recursive directory walk on
+  // every launch.
+  if (m_baseFileCache.empty() || m_dataDirPath != m_cachedDataDirPath) {
+    m_baseFileCache    = scanDataDir(m_dataDirPath);
+    m_cachedDataDirPath = m_dataDirPath;
+    log::debug("Scanned {} base game entries from {}", m_baseFileCache.size(),
+               QString::fromStdString(m_dataDirPath));
+  } else {
+    log::debug("Reusing cached {} base game entries for {}",
+               m_baseFileCache.size(), QString::fromStdString(m_dataDirPath));
+  }
 
   // Open fd to data dir BEFORE mounting so we can access original files
   m_backingFd = open(m_dataDirPath.c_str(), O_RDONLY | O_DIRECTORY);
@@ -291,6 +303,9 @@ bool FuseConnector::mount(
   // Build tree using cached base files + mods + overwrite
   auto tree = std::make_shared<VfsTree>(
       buildDataDirVfs(m_baseFileCache, m_dataDirPath, mods, m_overwriteDir));
+
+  // Inject file-level data-dir mappings (e.g. plugins.txt, loadorder.txt)
+  injectExtraFiles(*tree, m_extraVfsFiles);
 
   m_context                 = std::make_shared<Mo2FsContext>();
   m_context->tree           = tree;
@@ -362,6 +377,7 @@ void FuseConnector::unmount()
     m_helperProcess = nullptr;
     m_mounted       = false;
     setFuseMountPointForCrashCleanup(nullptr);
+    cleanupExternalMappings();
     log::debug("VFS helper stopped, FUSE unmounted from {}",
                QString::fromStdString(m_mountPoint));
     return;
@@ -391,6 +407,9 @@ void FuseConnector::unmount()
   m_context.reset();
   m_mounted = false;
   setFuseMountPointForCrashCleanup(nullptr);
+
+  // Clean up symlinks created for non-data-dir mappings.
+  cleanupExternalMappings();
 
   log::debug("FUSE unmounted from {}", QString::fromStdString(m_mountPoint));
 }
@@ -431,6 +450,9 @@ void FuseConnector::rebuild(
   auto newTree = std::make_shared<VfsTree>(
       buildDataDirVfs(m_baseFileCache, m_dataDirPath, mods, m_overwriteDir));
 
+  // Inject file-level data-dir mappings (e.g. plugins.txt, loadorder.txt)
+  injectExtraFiles(*newTree, m_extraVfsFiles);
+
   std::unique_lock lock(m_context->tree_mutex);
   m_context->tree.swap(newTree);
 }
@@ -449,12 +471,136 @@ void FuseConnector::updateMapping(const MappingType& mapping)
 
   auto mods = buildModsFromMapping(mapping, dataDirPath, overwriteDir);
 
+  // Deploy non-data-dir mappings as real symlinks and collect file-level
+  // data-dir mappings for VFS tree injection.
+  deployExternalMappings(mapping, dataDirPath);
+
   if (!m_mounted) {
-    // mount_point param is ignored — mount() computes it from gameDir + dataDirName
     mount(dataDirPath, overwriteDir, gameDir, dataDirName, mods);
   } else {
     rebuild(mods, overwriteDir, dataDirName);
   }
+}
+
+void FuseConnector::deployExternalMappings(const MappingType& mapping,
+                                            const QString& dataDir)
+{
+  cleanupExternalMappings();
+  m_extraVfsFiles.clear();
+
+  const QString cleanDataDir = QDir::cleanPath(dataDir);
+  const QString dataPrefix   = cleanDataDir + QStringLiteral("/");
+
+  for (const auto& map : mapping) {
+    const QString src =
+        QDir::cleanPath(QDir::fromNativeSeparators(map.source));
+    const QString dst =
+        QDir::cleanPath(QDir::fromNativeSeparators(map.destination));
+
+    const bool targetsDataDir =
+        (dst == cleanDataDir || dst.startsWith(dataPrefix));
+
+    if (targetsDataDir) {
+      if (!map.isDirectory) {
+        // File-level mapping INTO the data directory (e.g. plugins.txt).
+        // FUSE sits on top, so we cannot create a physical symlink there.
+        // Record it for injection into the VFS tree instead.
+        const QString relPath = dst.startsWith(dataPrefix)
+                                    ? dst.mid(dataPrefix.length())
+                                    : QFileInfo(src).fileName();
+        m_extraVfsFiles.emplace_back(relPath.toStdString(), src.toStdString());
+      }
+      // Directory-level data-dir mappings are handled by the FUSE VFS.
+      continue;
+    }
+
+    // Non-data-dir mapping — deploy via real symlinks so the game
+    // (running through Proton) can see the files.
+    std::error_code ec;
+
+    if (map.isDirectory) {
+      const fs::path srcPath(src.toStdString());
+      if (!fs::exists(srcPath, ec)) {
+        continue;
+      }
+
+      for (auto it = fs::recursive_directory_iterator(
+               srcPath, fs::directory_options::skip_permission_denied);
+           it != fs::recursive_directory_iterator(); ++it) {
+        const auto& entry = *it;
+        const fs::path rel = fs::relative(entry.path(), srcPath, ec);
+        if (ec || rel.empty()) {
+          continue;
+        }
+
+        const fs::path destPath = fs::path(dst.toStdString()) / rel;
+        if (entry.is_directory(ec)) {
+          fs::create_directories(destPath, ec);
+        } else if (entry.is_regular_file(ec) || entry.is_symlink(ec)) {
+          fs::create_directories(destPath.parent_path(), ec);
+          if (fs::exists(destPath, ec) && !fs::is_symlink(destPath, ec)) {
+            // Never overwrite real game files — only replace our own symlinks.
+            continue;
+          }
+          if (fs::is_symlink(destPath, ec)) {
+            fs::remove(destPath, ec);
+          }
+          fs::create_symlink(entry.path(), destPath, ec);
+          if (!ec) {
+            m_externalSymlinks.push_back(destPath.string());
+          } else {
+            log::warn("Failed to symlink {} -> {}: {}",
+                      QString::fromStdString(destPath.string()),
+                      QString::fromStdString(entry.path().string()),
+                      QString::fromStdString(ec.message()));
+          }
+        }
+      }
+    } else {
+      // Single file symlink.
+      const fs::path destPath(dst.toStdString());
+      fs::create_directories(destPath.parent_path(), ec);
+      if (fs::exists(destPath, ec) && !fs::is_symlink(destPath, ec)) {
+        continue;
+      }
+      if (fs::is_symlink(destPath, ec)) {
+        fs::remove(destPath, ec);
+      }
+      fs::create_symlink(fs::path(src.toStdString()), destPath, ec);
+      if (!ec) {
+        m_externalSymlinks.push_back(destPath.string());
+      } else {
+        log::warn("Failed to symlink {} -> {}: {}", dst, src,
+                  QString::fromStdString(ec.message()));
+      }
+    }
+  }
+
+  if (!m_externalSymlinks.empty()) {
+    log::debug("Deployed {} external symlinks for non-data-dir mappings",
+               m_externalSymlinks.size());
+  }
+  if (!m_extraVfsFiles.empty()) {
+    log::debug("Collected {} extra file mappings for VFS injection",
+               m_extraVfsFiles.size());
+  }
+}
+
+void FuseConnector::cleanupExternalMappings()
+{
+  if (m_externalSymlinks.empty()) {
+    return;
+  }
+
+  std::error_code ec;
+  for (const auto& path : m_externalSymlinks) {
+    if (fs::is_symlink(path, ec)) {
+      fs::remove(path, ec);
+    }
+  }
+
+  log::debug("Cleaned up {} external symlinks", m_externalSymlinks.size());
+  m_externalSymlinks.clear();
 }
 
 void FuseConnector::updateParams(MOBase::log::Levels /*logLevel*/,
@@ -681,5 +827,10 @@ void FuseConnector::writeVfsConfig(
   for (const auto& [name, path] : mods) {
     out << "mod=" << QString::fromStdString(name) << "|"
         << QString::fromStdString(path) << "\n";
+  }
+
+  for (const auto& [relPath, realPath] : m_extraVfsFiles) {
+    out << "extra_file=" << QString::fromStdString(relPath) << "|"
+        << QString::fromStdString(realPath) << "\n";
   }
 }

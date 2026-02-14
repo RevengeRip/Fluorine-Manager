@@ -52,7 +52,7 @@ class PaksTabWidget(QWidget):
         paks_txt = QFileInfo(profile.absoluteFilePath("paks.txt"))
         paks_list: list[str] = []
         if paks_txt.exists():
-            with open(paks_txt.absoluteFilePath(), "r") as paks_file:
+            with open(paks_txt.absoluteFilePath(), "r", encoding="utf-8", errors="replace") as paks_file:
                 for line in paks_file:
                     paks_list.append(line.strip())
         return paks_list

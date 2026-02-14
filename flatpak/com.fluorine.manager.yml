@@ -13,7 +13,9 @@ finish-args:
   - --socket=wayland
   - --device=all
   - --filesystem=home
-  - --filesystem=/run/media:ro
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
   - --filesystem=~/.steam:ro
   - --filesystem=~/.local/share/Steam
   - --filesystem=~/.var/app/com.valvesoftware.Steam:ro
@@ -292,6 +294,7 @@ modules:
         find _build/libs -type f \( \
           -name "libgame_*.so" -o \
           -name "libinstaller_*.so" -o \
+          -name "libfomod_plus_*.so" -o \
           -name "libpreview_*.so" -o \
           -name "libdiagnose_*.so" -o \
           -name "libcheck_*.so" -o \
@@ -305,7 +308,7 @@ modules:
 
       # Python plugin payload.
       - |
-        for f in libplugin_python.so lzokay.py winreg.py pyCfg.py \
+        for f in libplugin_python.so lzokay.py winreg.py \
                  DDSPreview.py Form43Checker.py ScriptExtenderPluginChecker.py; do
           [ -f "_build/src/src/plugins/${f}" ] && cp -f "_build/src/src/plugins/${f}" /app/lib/fluorine/plugins/
         done
@@ -319,6 +322,9 @@ modules:
         for f in src/plugins/*.py; do
           [ -f "${f}" ] && cp -f "${f}" /app/lib/fluorine/plugins/
         done
+
+      # Stylesheets / themes.
+      - cp -a src/src/stylesheets /app/lib/fluorine/stylesheets
 
       # 7z runtime.
       - |

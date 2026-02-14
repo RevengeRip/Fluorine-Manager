@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
+import platform
 import shutil
 import sys
 from pathlib import Path
 from typing import Callable, Generic, TypeVar
 
-from PyQt6.QtCore import QDir, QFileInfo, QStandardPaths
+from PyQt6.QtCore import QDir, QFileInfo, QStandardPaths, qWarning
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QMessageBox
 
@@ -15,6 +17,49 @@ from .basic_features.basic_save_game_info import (
     BasicGameSaveGame,
     BasicGameSaveGameInfo,
 )
+
+
+def _find_wine_userprofile() -> str | None:
+    """On Linux, find the Wine/Proton user profile directory inside the prefix.
+
+    Returns the host path equivalent of %USERPROFILE% (e.g.
+    ``<prefix>/drive_c/users/steamuser``) or *None* if no valid prefix is
+    found.
+    """
+    if platform.system() == "Windows":
+        return None
+
+    candidates: list[str] = []
+
+    # 1. Flatpak data prefix (most common for Fluorine)
+    flatpak_pfx = os.path.expanduser(
+        "~/.var/app/com.fluorine.manager/Prefix/pfx"
+    )
+    candidates.append(flatpak_pfx)
+
+    # 2. Fluorine config prefix_path
+    try:
+        config_dir = os.environ.get(
+            "XDG_CONFIG_HOME", os.path.join(str(Path.home()), ".config")
+        )
+        cfg_path = os.path.join(config_dir, "fluorine", "config.json")
+        if os.path.isfile(cfg_path):
+            import json
+
+            with open(cfg_path, "r") as f:
+                cfg = json.load(f)
+            pfx = cfg.get("prefix_path", "")
+            if pfx:
+                candidates.append(pfx)
+    except Exception:
+        pass
+
+    for pfx in candidates:
+        user_dir = os.path.join(pfx, "drive_c", "users", "steamuser")
+        if os.path.isdir(user_dir):
+            return user_dir
+
+    return None
 
 
 def replace_variables(value: str, game: BasicGame) -> str:
@@ -28,18 +73,32 @@ def replace_variables(value: str, game: BasicGame) -> str:
             ),
         )
     if value.find("%USERPROFILE%") != -1:
-        value = value.replace(
-            "%USERPROFILE%",
-            QStandardPaths.writableLocation(
-                QStandardPaths.StandardLocation.HomeLocation
-            ),
-        )
+        if platform.system() != "Windows":
+            wine_profile = _find_wine_userprofile()
+            if wine_profile:
+                value = value.replace("%USERPROFILE%", wine_profile)
+            else:
+                qWarning(
+                    "No Wine/Proton prefix found. "
+                    "Ensure a prefix is configured in Settings > Proton."
+                )
+                value = value.replace("%USERPROFILE%", "")
+        else:
+            value = value.replace(
+                "%USERPROFILE%",
+                QStandardPaths.writableLocation(
+                    QStandardPaths.StandardLocation.HomeLocation
+                ),
+            )
     if value.find("%GAME_DOCUMENTS%") != -1:
         value = value.replace(
             "%GAME_DOCUMENTS%", game.documentsDirectory().absolutePath()
         )
     if value.find("%GAME_PATH%") != -1:
         value = value.replace("%GAME_PATH%", game.gameDirectory().absolutePath())
+
+    # Normalize Windows backslash path separators for Linux.
+    value = value.replace("\\", "/")
 
     return value
 
@@ -634,8 +693,11 @@ class BasicGame(mobase.IPluginGame):
         return QDir(self._gamePath)
 
     def dataDirectory(self) -> QDir:
+        data_path = self._mappings.dataDirectory.get()
+        if data_path and QDir.isAbsolutePath(data_path):
+            return QDir(data_path)
         return QDir(
-            self.gameDirectory().absoluteFilePath(self._mappings.dataDirectory.get())
+            self.gameDirectory().absoluteFilePath(data_path)
         )
 
     def setGamePath(self, path: Path | str) -> None:

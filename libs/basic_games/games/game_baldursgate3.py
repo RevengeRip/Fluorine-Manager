@@ -170,6 +170,7 @@ class BG3Game(BasicGame, bg3_file_mapper.BG3FileMapper):
     def _on_finished_run(self, exec_path: str, exit_code: int):
         if "bin/bg3" not in exec_path:
             return
+        self.cleanup()  # Remove symlinks created by the file mapper on Linux
         cat = QLoggingCategory.defaultCategory()
         self.utils.log_dir.mkdir(parents=True, exist_ok=True)
         if (

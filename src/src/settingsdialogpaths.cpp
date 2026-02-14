@@ -1,7 +1,20 @@
 #include "settingsdialogpaths.h"
 #include "shared/appconfig.h"
 #include "ui_settingsdialog.h"
+#include <QFileDialog>
 #include <iplugingame.h>
+
+namespace {
+QFileDialog::Options flatpakSafeOptions()
+{
+  QFileDialog::Options opts;
+#ifndef _WIN32
+  if (qEnvironmentVariableIsSet("FLATPAK_ID"))
+    opts |= QFileDialog::DontUseNativeDialog;
+#endif
+  return opts;
+}
+}  // namespace
 
 PathsSettingsTab::PathsSettingsTab(Settings& s, SettingsDialog& d)
     : SettingsTab(s, d), m_gameDir(settings().game().plugin()->gameDirectory())
@@ -129,7 +142,8 @@ void PathsSettingsTab::update()
 void PathsSettingsTab::on_browseBaseDirBtn_clicked()
 {
   QString temp = QFileDialog::getExistingDirectory(
-      &dialog(), QObject::tr("Select base directory"), ui->baseDirEdit->text());
+      &dialog(), QObject::tr("Select base directory"), ui->baseDirEdit->text(),
+      flatpakSafeOptions());
   if (!temp.isEmpty()) {
     ui->baseDirEdit->setText(temp);
   }
@@ -141,7 +155,8 @@ void PathsSettingsTab::on_browseDownloadDirBtn_clicked()
   searchPath         = PathSettings::resolve(searchPath, ui->baseDirEdit->text());
 
   QString temp = QFileDialog::getExistingDirectory(
-      &dialog(), QObject::tr("Select download directory"), searchPath);
+      &dialog(), QObject::tr("Select download directory"), searchPath,
+      flatpakSafeOptions());
   if (!temp.isEmpty()) {
     ui->downloadDirEdit->setText(temp);
   }
@@ -153,7 +168,8 @@ void PathsSettingsTab::on_browseModDirBtn_clicked()
   searchPath         = PathSettings::resolve(searchPath, ui->baseDirEdit->text());
 
   QString temp = QFileDialog::getExistingDirectory(
-      &dialog(), QObject::tr("Select mod directory"), searchPath);
+      &dialog(), QObject::tr("Select mod directory"), searchPath,
+      flatpakSafeOptions());
   if (!temp.isEmpty()) {
     ui->modDirEdit->setText(temp);
   }
@@ -165,7 +181,8 @@ void PathsSettingsTab::on_browseCacheDirBtn_clicked()
   searchPath         = PathSettings::resolve(searchPath, ui->baseDirEdit->text());
 
   QString temp = QFileDialog::getExistingDirectory(
-      &dialog(), QObject::tr("Select cache directory"), searchPath);
+      &dialog(), QObject::tr("Select cache directory"), searchPath,
+      flatpakSafeOptions());
   if (!temp.isEmpty()) {
     ui->cacheDirEdit->setText(temp);
   }
@@ -177,7 +194,8 @@ void PathsSettingsTab::on_browseProfilesDirBtn_clicked()
   searchPath         = PathSettings::resolve(searchPath, ui->baseDirEdit->text());
 
   QString temp = QFileDialog::getExistingDirectory(
-      &dialog(), QObject::tr("Select profiles directory"), searchPath);
+      &dialog(), QObject::tr("Select profiles directory"), searchPath,
+      flatpakSafeOptions());
   if (!temp.isEmpty()) {
     ui->profilesDirEdit->setText(temp);
   }
@@ -189,7 +207,8 @@ void PathsSettingsTab::on_browseOverwriteDirBtn_clicked()
   searchPath         = PathSettings::resolve(searchPath, ui->baseDirEdit->text());
 
   QString temp = QFileDialog::getExistingDirectory(
-      &dialog(), QObject::tr("Select overwrite directory"), searchPath);
+      &dialog(), QObject::tr("Select overwrite directory"), searchPath,
+      flatpakSafeOptions());
   if (!temp.isEmpty()) {
     ui->overwriteDirEdit->setText(temp);
   }

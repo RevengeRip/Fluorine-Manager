@@ -336,6 +336,15 @@ bool ProtonLauncher::launchWithProton(qint64& pid) const
     env.insert(it.key(), it.value());
   }
 
+  // Set DXVK config if available
+  if (char* dxvkPath = nak_get_dxvk_conf_path(); dxvkPath != nullptr) {
+    const QString dxvkConf = QString::fromUtf8(dxvkPath);
+    nak_string_free(dxvkPath);
+    if (QFileInfo::exists(dxvkConf)) {
+      env.insert("DXVK_CONFIG_FILE", dxvkConf);
+    }
+  }
+
   maybeWrapForFlatpak(program, arguments, env);
 
   MOBase::log::info("Proton launch: '{}' run '{}'", protonScript, m_binary);
@@ -444,6 +453,15 @@ bool ProtonLauncher::launchWithUmu(qint64& pid) const
 
   for (auto it = m_envVars.cbegin(); it != m_envVars.cend(); ++it) {
     env.insert(it.key(), it.value());
+  }
+
+  // Set DXVK config if available
+  if (char* dxvkPath = nak_get_dxvk_conf_path(); dxvkPath != nullptr) {
+    const QString dxvkConf = QString::fromUtf8(dxvkPath);
+    nak_string_free(dxvkPath);
+    if (QFileInfo::exists(dxvkConf)) {
+      env.insert("DXVK_CONFIG_FILE", dxvkConf);
+    }
   }
 
   maybeWrapForFlatpak(program, arguments, env);

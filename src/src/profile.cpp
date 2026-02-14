@@ -444,10 +444,12 @@ void Profile::refreshModStatus()
   bool modStatusModified = false;
   m_ModStatus.clear();
   m_ModStatus.resize(ModInfo::getNumMods());
+  log::debug("refreshModStatus: ModInfo has {} entries", ModInfo::getNumMods());
 
   std::set<QString> namesRead;
 
   bool warnAboutOverwrite = false;
+  unsigned int modsNotFound = 0;
 
   // load mods from file and update enabled state and priority for them
   int index = 0;
@@ -488,7 +490,10 @@ void Profile::refreshModStatus()
 
     unsigned int modIndex = ModInfo::getIndex(modName);
     if (modIndex == UINT_MAX) {
-      log::debug("mod not found: \"{}\" (profile \"{}\")", modName, m_Directory.path());
+      if (modsNotFound < 5) {
+        log::warn("mod not found: \"{}\" (profile \"{}\")", modName, m_Directory.path());
+      }
+      ++modsNotFound;
       // need to rewrite the modlist to fix this
       modStatusModified = true;
       continue;
@@ -514,6 +519,12 @@ void Profile::refreshModStatus()
   }  // while (!file.atEnd())
 
   file.close();
+
+  if (modsNotFound > 0) {
+    log::error("refreshModStatus: {} mods from modlist.txt were not found in "
+               "ModInfo (total ModInfo entries: {})",
+               modsNotFound, ModInfo::getNumMods());
+  }
 
   const int numKnownMods = index;
   int topInsert          = 0;
@@ -919,7 +930,11 @@ bool Profile::localSettingsEnabled() const
     QStringList missingFiles;
     for (QString file : m_GamePlugin->iniFiles()) {
       QString fileName = QFileInfo(file).fileName();
-      if (!QFile::exists(m_Directory.filePath(fileName))) {
+      // Use case-insensitive lookup on Linux — the file may exist with
+      // different casing (e.g. "skyrimprefs.ini" vs "SkyrimPrefs.ini").
+      QString resolved = MOBase::resolveFileCaseInsensitive(
+          m_Directory.filePath(fileName));
+      if (!QFile::exists(resolved)) {
         log::warn("missing {} in {}", fileName, m_Directory.path());
         missingFiles << fileName;
       }
@@ -959,7 +974,9 @@ bool Profile::enableLocalSettings(bool enable)
     if (res == QMessageBox::Yes) {
       QStringList filesToDelete;
       for (QString file : m_GamePlugin->iniFiles()) {
-        filesToDelete << m_Directory.absoluteFilePath(QFileInfo(file).fileName());
+        QString resolved = MOBase::resolveFileCaseInsensitive(
+            m_Directory.absoluteFilePath(QFileInfo(file).fileName()));
+        filesToDelete << resolved;
       }
       shellDelete(filesToDelete, true);
     } else if (res == QMessageBox::No) {
@@ -1003,7 +1020,8 @@ QString Profile::getIniFileName() const
   if (iniFiles.isEmpty())
     return "";
   else
-    return m_Directory.absoluteFilePath(QFileInfo(iniFiles[0]).fileName());
+    return MOBase::resolveFileCaseInsensitive(
+        m_Directory.absoluteFilePath(QFileInfo(iniFiles[0]).fileName()));
 }
 
 QString Profile::absoluteIniFilePath(QString iniFile) const

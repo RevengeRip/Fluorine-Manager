@@ -390,6 +390,15 @@ void CreateInstanceDialog::finish()
 
     logCreation(tr("Done."));
 
+    // register non-default portable instances so they appear in the sidebar
+    if (ci.type == Portable) {
+      const auto defaultPortable =
+          QDir(InstanceManager::singleton().portablePath()).absolutePath();
+      if (QDir(ci.dataPath).absolutePath() != defaultPortable) {
+        InstanceManager::singleton().registerPortableInstance(ci.dataPath);
+      }
+    }
+
     // launch the new instance
     if (ui->launch->isChecked()) {
       if (ci.type == Portable) {

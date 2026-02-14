@@ -2582,3 +2582,27 @@ void GlobalSettings::resetDialogs()
   setHideCreateInstanceIntro(false);
   setHideTutorialQuestion(false);
 }
+
+QStringList GlobalSettings::portableInstances()
+{
+  return settings().value("PortableInstances").toStringList();
+}
+
+void GlobalSettings::addPortableInstance(const QString& path)
+{
+  const QString canonical = QDir(path).absolutePath();
+  QStringList list = portableInstances();
+  if (!list.contains(canonical)) {
+    list.append(canonical);
+    settings().setValue("PortableInstances", list);
+  }
+}
+
+void GlobalSettings::removePortableInstance(const QString& path)
+{
+  const QString canonical = QDir(path).absolutePath();
+  QStringList list = portableInstances();
+  if (list.removeAll(canonical) > 0) {
+    settings().setValue("PortableInstances", list);
+  }
+}

@@ -9,6 +9,7 @@
 #include "shared/util.h"
 #include "thread_utils.h"
 #include <log.h>
+#include <nak_ffi.h>
 #include <report.h>
 #include <QString>
 
@@ -17,6 +18,7 @@
 #else
 #include <csignal>
 #include <cstdlib>
+#include <cstring>
 #include <execinfo.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -81,6 +83,23 @@ int run(int argc, char* argv[])
 #endif
 
   initLogging();
+
+  // Route NaK (Rust) log messages through MOBase::log
+  nak_init_logging([](const char* level, const char* message) {
+    if (!message || !*message) return;
+    if (!level || !*level) {
+      log::info("[nak] {}", message);
+      return;
+    }
+    // Map NaK levels to MOBase log levels
+    if (std::strcmp(level, "error") == 0) {
+      log::error("[nak] {}", message);
+    } else if (std::strcmp(level, "warning") == 0) {
+      log::warn("[nak] {}", message);
+    } else {
+      log::info("[nak] {}", message);
+    }
+  });
 
   // must be after logging
   TimeThis tt("main() multiprocess");
@@ -175,12 +194,13 @@ int run(int argc, char* argv[])
         QObject::connect(&nxmHandler, &NxmHandlerLinux::nxmReceived, &app.core(),
                          [&](const NxmLink& link) {
                            app.core().downloadRequestedNXM(
-                               QString("nxm://%1/mods/%2/files/%3?key=%4&expires=%5")
+                               QString("nxm://%1/mods/%2/files/%3?key=%4&expires=%5&user_id=%6")
                                    .arg(link.game_domain)
                                    .arg(link.mod_id)
                                    .arg(link.file_id)
                                    .arg(link.key)
-                                   .arg(link.expires));
+                                   .arg(link.expires)
+                                   .arg(link.user_id));
                          });
       }
 #endif

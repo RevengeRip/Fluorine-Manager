@@ -181,7 +181,7 @@ class OblivionRemasteredModDataChecker(mobase.ModDataChecker):
 
         # Similar to the above, many mods pack files relative to the root game directory. Some common paths can be
         # automatically moved into the appropriate directory structures to avoid needless iteration.
-        exe_dir = filetree.find(r"OblivionRemastered\Binaries\Win64")
+        exe_dir = filetree.find("OblivionRemastered/Binaries/Win64")
         if isinstance(exe_dir, mobase.IFileTree):
             gamesettings_dir = exe_dir.find("GameSettings")
             if isinstance(gamesettings_dir, mobase.IFileTree):

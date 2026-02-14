@@ -4,6 +4,7 @@
 #include "ui_settingsdialog.h"
 
 #include <QtConcurrent/QtConcurrentRun>
+#include <log.h>
 #include <nak_ffi.h>
 #include <atomic>
 #include <QComboBox>
@@ -272,8 +273,14 @@ void ProtonSettingsTab::onOpenPrefixFolder()
 
 void ProtonSettingsTab::onBrowsePrefixLocation()
 {
+  QFileDialog::Options opts;
+#ifndef _WIN32
+  if (qEnvironmentVariableIsSet("FLATPAK_ID"))
+    opts |= QFileDialog::DontUseNativeDialog;
+#endif
   const QString dir = QFileDialog::getExistingDirectory(
-      parentWidget(), tr("Select Prefix Location"), ui->prefixLocationEdit->text());
+      parentWidget(), tr("Select Prefix Location"), ui->prefixLocationEdit->text(),
+      opts);
   if (!dir.isEmpty()) {
     ui->prefixLocationEdit->setText(dir);
   }
@@ -281,7 +288,7 @@ void ProtonSettingsTab::onBrowsePrefixLocation()
 
 QString ProtonSettingsTab::ensureWinetricks()
 {
-  const QString nakWinetricks = QDir::homePath() + "/.config/nak/bin/winetricks";
+  const QString nakWinetricks = QDir::homePath() + "/.var/app/com.fluorine.manager/bin/winetricks";
   if (QFileInfo::exists(nakWinetricks)) {
     return nakWinetricks;
   }
@@ -291,7 +298,7 @@ QString ProtonSettingsTab::ensureWinetricks()
     return systemWinetricks;
   }
 
-  const QString nakBinDir = QDir::homePath() + "/.config/nak/bin";
+  const QString nakBinDir = QDir::homePath() + "/.var/app/com.fluorine.manager/bin";
   QDir().mkpath(nakBinDir);
 
   QString downloadTool;
@@ -469,9 +476,14 @@ void ProtonSettingsTab::showGameRegistryDialog()
   layout->addLayout(pathLayout);
 
   QObject::connect(browseBtn, &QPushButton::clicked, &dialog, [&dialog, pathEdit]() {
+    QFileDialog::Options opts;
+#ifndef _WIN32
+    if (qEnvironmentVariableIsSet("FLATPAK_ID"))
+      opts |= QFileDialog::DontUseNativeDialog;
+#endif
     const QString dir = QFileDialog::getExistingDirectory(
         &dialog, QObject::tr("Select Game Installation Folder"),
-        pathEdit->text().isEmpty() ? QDir::homePath() : pathEdit->text());
+        pathEdit->text().isEmpty() ? QDir::homePath() : pathEdit->text(), opts);
     if (!dir.isEmpty()) {
       pathEdit->setText(dir);
     }
@@ -688,7 +700,9 @@ void ProtonSettingsTab::statusCallback(const char* message)
 
 void ProtonSettingsTab::logCallback(const char* message)
 {
-  Q_UNUSED(message);
+  if (message && *message) {
+    MOBase::log::info("{}", message);
+  }
 }
 
 void ProtonSettingsTab::progressCallback(float progress)
@@ -716,6 +730,12 @@ void ProtonSettingsTab::onInstallFinished()
     const QByteArray prefixPathUtf8 = m_pendingPrefixPath.toUtf8();
     nak_ensure_temp_directory(prefixPathUtf8.constData());
     nak_create_game_symlinks_auto(prefixPathUtf8.constData());
+  }
+
+  // Ensure DXVK config exists for game launches
+  if (char* dxvkErr = nak_ensure_dxvk_conf(); dxvkErr != nullptr) {
+    MOBase::log::warn("Failed to create dxvk.conf: {}", dxvkErr);
+    nak_string_free(dxvkErr);
   }
 
   FluorineConfig cfg;
