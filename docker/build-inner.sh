@@ -626,9 +626,7 @@ if [ -f "${DESKTOP_SRC}" ]; then
         "${DESKTOP_SRC}" > "${DESKTOP_TMP}"; then
         chmod +x "${DESKTOP_TMP}"
         mv -f "${DESKTOP_TMP}" "${DESKTOP_DST}"
-        command -v update-desktop-database >/dev/null 2>&1 && \
-            update-desktop-database "$(dirname "${DESKTOP_DST}")" \
-                >/dev/null 2>&1 || true
+        command -v update-desktop-database >/dev/null 2>&1
     else
         rm -f "${DESKTOP_TMP}"
     fi
@@ -811,8 +809,7 @@ DESKTOP_EOF
         chmod +x "${DESKTOP_DIR}/com.fluorine.manager.desktop"
 
         # Update desktop database if available
-        command -v update-desktop-database >/dev/null 2>&1 && \
-            update-desktop-database "${DESKTOP_DIR}" 2>/dev/null || true
+        command -v update-desktop-database >/dev/null 2>&1
         echo ""
         echo "Installation complete!"
         echo "  Binary:   ${INSTALL_DIR}/fluorine-manager"

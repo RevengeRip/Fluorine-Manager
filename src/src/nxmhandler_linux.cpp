@@ -245,7 +245,6 @@ void runDesktopCommand(const QString& program, const QStringList& arguments)
 
 void refreshDesktopAssociationCaches(const QString& appsDir)
 {
-  runDesktopCommand(QStringLiteral("update-desktop-database"), QStringList{appsDir});
   runDesktopCommand(QStringLiteral("xdg-desktop-menu"),
                     QStringList{QStringLiteral("forceupdate")});
 }
